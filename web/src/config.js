@@ -28,6 +28,18 @@ export const MEETING = {
 
 export const PLANTS = [[0, 8], [10, 3], [0, 2]];
 
+// 대표실(사장실): 우하단 코너. carpet=바닥 영역, desk=중역 책상(막힘),
+// seat=대표가 서 있는 자리(책상 뒤), report=담당자가 보고하러 서는 자리.
+export const CEO_ROOM = {
+  carpet: [[9, 7], [10, 7], [9, 8], [10, 8]],
+  desk: [10, 8],
+  seat: [10, 7],
+  report: [9, 8],
+};
+
+// 대표 캐릭터 정의(백엔드 역할 아님 — AGENT_DEFS 와 분리 유지). home=기본 위치.
+export const CEO_DEF = { id: 'ceo', name: '대표님', role: '대표이사 · CEO', color: '#e0b64d', hair: '#2b2620', boss: true, home: [10, 7] };
+
 // 에이전트 정의(정적). 런타임 상태(pos/status 등)는 Agent 인스턴스가 가짐.
 export const AGENT_DEFS = [
   { id: 'pm',        name: '김기획', role: 'PM · 프로젝트 매니저', color: '#ff6b81', hair: '#3a2723' },
@@ -63,6 +75,18 @@ export const WORK_LINES = {
   writer: ['문서 작성 ✍️', '예제 정리', 'README 다듬는 중'],
 };
 export const TALK_LINES = ['이거 어떻게 생각해요?', '리뷰 부탁해요 🙏', '여기 확인!', '좋은데요? 👍'];
+
+// 대표(꼰대) 대사 풀 — 재미용. 순수 연출이라 라이브/오프라인 모두 사용.
+export const BOSS_LINES = [
+  '나 때는 말이야~ 🎩', '요즘 젊은 친구들은 패기가 없어~', '주인의식! 주인의식을 가져!',
+  '이거 내가 하면 5분이면 해 😤', '열정이 부족해, 열정이! 🔥', '보고는 두괄식! 결론부터!',
+  '커피 마실 시간에 일을 해야지 ☕', '아이디어는 좋은데... 내 생각은 좀 달라',
+  '이게 그렇게 어렵나? 🤨', '주말에 잠깐 나와서 하면 안 되나~', '문제가 있으면 답도 있는 거야, 알지?',
+];
+export const BOSS_REACTIONS = ['네, 대표님... 😅', '아 넵! 💦', '명심하겠습니다 🫡', '(또 시작이네) 😑', '넵넵 🙇', '하하... 네 😓'];
+export const BOSS_APPROVAL_LINES = ['어디 보자~ 🧐', '음, 이걸로 되겠어?', '설명해봐, 두괄식으로!', '나 때는 이런 거 하루면 끝냈어'];
+export const BOSS_GRANT_LINES = ['좋아, 통과! 👍', '그래, 진행해!', '이번엔 봐준다~', '오케이, 화이팅! 🔥'];
+export const BOSS_REJECT_LINES = ['다시 해와! 🙅', '이게 최선이야?', '반려! 다시 생각해봐 🤔'];
 
 // 도구 호출 이벤트를 말풍선 문구로
 export const TOOL_LABELS = {

@@ -1,7 +1,7 @@
 // ============================================================================
 // Renderer — 월드 상태를 아이소메트릭 캔버스로 그린다. 상태를 바꾸지 않음(순수).
 // ============================================================================
-import { TILE_W, TILE_H, GRID_W, GRID_H, WALL_H, DESKS, MEETING, PLANTS, STATUS } from './config.js';
+import { TILE_W, TILE_H, GRID_W, GRID_H, WALL_H, DESKS, MEETING, PLANTS, STATUS, CEO_ROOM } from './config.js';
 
 let canvas, ctx, world;
 const view = { originX: 0, originY: 0, w: 0, h: 0 };
@@ -182,10 +182,51 @@ function drawFloor() {
     for (let tx = 0; tx < GRID_W; tx++) {
       const p = isoToScreen(tx, ty);
       const isRug = MEETING.rug.some(([rx, ry]) => rx === tx && ry === ty);
-      // 디자인안 5-A: 딥틸 체커 + 민트 러그
-      drawTile(p.x, p.y, isRug ? '#2c5a52' : ((tx + ty) % 2 ? '#1e2c31' : '#233439'), isRug ? '#3f8577' : '#2b4148');
+      const isCeo = CEO_ROOM.carpet.some(([rx, ry]) => rx === tx && ry === ty);
+      // 딥틸 체커 + 회의 민트 러그 + 대표실 버건디 카펫
+      let fill = (tx + ty) % 2 ? '#1e2c31' : '#233439', stroke = '#2b4148';
+      if (isRug) { fill = '#2c5a52'; stroke = '#3f8577'; }
+      if (isCeo) { fill = '#4a2836'; stroke = '#7a4258'; }
+      drawTile(p.x, p.y, fill, stroke);
     }
   }
+}
+
+// 대표실 뒤편 요소: 유리 파티션 + 명패 + 중역 의자(대표 뒤에 그려져 가려짐 방지)
+function drawCeoRoom() {
+  const L = (gx, gy) => isoToScreen(gx, gy); // 격자 꼭짓점(타일 top 코너)
+  const PH = 26;
+  // 유리 파티션 패널 하나
+  const panel = (a, b) => {
+    fillPoly([a, b, { x: b.x, y: b.y - PH }, { x: a.x, y: a.y - PH }], 'rgba(150,200,230,0.13)', '#43566a');
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y - PH + 4); ctx.lineTo(b.x, b.y - PH + 4); ctx.stroke();
+  };
+  panel(L(9, 7), L(11, 7));  // 북쪽 파티션(뒤 벽)
+  panel(L(9, 7), L(9, 8));   // 서쪽 파티션 (y=8 은 출입구로 비움)
+  // 중역 의자(대표 자리 뒤 하이백)
+  const s = L(CEO_ROOM.seat[0], CEO_ROOM.seat[1]);
+  const chx = s.x, chy = s.y + TILE_H / 2;
+  ctx.fillStyle = '#241a12'; roundRect(chx - 9, chy - 34, 18, 26, 5); ctx.fill();
+  ctx.fillStyle = '#3a2a1c'; roundRect(chx - 7, chy - 31, 14, 20, 4); ctx.fill();
+  // 명패("대표실") — 북쪽 파티션 위 금색 플라크
+  const np = L(10, 7);
+  ctx.fillStyle = '#c9a13b'; roundRect(np.x - 20, np.y - PH - 12, 40, 13, 2); ctx.fill();
+  ctx.fillStyle = '#2b2008'; ctx.font = '700 9px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('대표실', np.x, np.y - PH - 2.5);
+}
+
+// 중역 책상(일반 책상보다 크고 어두운 우드) + 서류/네임택
+function drawCeoDesk() {
+  const d = CEO_ROOM.desk, deskH = 18;
+  drawBox(d[0], d[1], deskH, '#6b4c34', '#4a3527', 1);
+  const p = isoToScreen(d[0], d[1]);
+  const cx = p.x, topY = p.y + TILE_H / 2 - deskH;
+  ctx.fillStyle = '#efe6d0'; roundRect(cx - 10, topY + 4, 13, 9, 1); ctx.fill(); // 서류
+  ctx.strokeStyle = '#c9b896'; ctx.lineWidth = 0.8;
+  ctx.beginPath(); ctx.moveTo(cx - 7, topY + 7); ctx.lineTo(cx + 0, topY + 7); ctx.moveTo(cx - 7, topY + 10); ctx.lineTo(cx - 1, topY + 10); ctx.stroke();
+  ctx.fillStyle = '#2a2f3a'; roundRect(cx + 4, topY + 6, 9, 5, 1); ctx.fill(); // 골드 네임택 받침
+  ctx.fillStyle = '#e0b64d'; roundRect(cx + 5, topY + 7, 7, 3, 0.5); ctx.fill();
 }
 
 function drawBox(tx, ty, h, topColor, sideColor, inset = 0) {
@@ -287,6 +328,14 @@ function drawAgentBody(a) {
   ctx.fillStyle = a.hair; ctx.beginPath(); ctx.arc(hx, hy, 8.5, Math.PI * 0.92, Math.PI * 2.08); ctx.closePath(); ctx.fill();
   ctx.fillStyle = '#3a2e2e';
   ctx.beginPath(); ctx.arc(hx - 3, hy + 1.5, 1.1, 0, 7); ctx.arc(hx + 3, hy + 1.5, 1.1, 0, 7); ctx.fill();
+  if (a.boss) { // 대표: 금색 왕관
+    const cyv = hy - 7.5;
+    ctx.fillStyle = '#f4c542';
+    ctx.beginPath();
+    ctx.moveTo(hx - 6, cyv); ctx.lineTo(hx - 6, cyv - 5); ctx.lineTo(hx - 3, cyv - 1.5);
+    ctx.lineTo(hx, cyv - 6); ctx.lineTo(hx + 3, cyv - 1.5); ctx.lineTo(hx + 6, cyv - 5);
+    ctx.lineTo(hx + 6, cyv); ctx.closePath(); ctx.fill();
+  }
 }
 
 function drawAgentLabel(a) {
@@ -317,13 +366,17 @@ export function render() {
   ctx.scale(camera.scale, camera.scale);
   drawWalls();
   drawFloor();
+  drawCeoRoom();                    // 파티션·의자·명패(대표/책상 뒤에 위치)
   const items = [];
   Object.keys(DESKS).forEach(id => items.push({ depth: DESKS[id].furn[0] + DESKS[id].furn[1], draw: () => drawDesk(id) }));
   items.push({ depth: MEETING.table[0] + MEETING.table[1], draw: drawTable });
+  items.push({ depth: CEO_ROOM.desk[0] + CEO_ROOM.desk[1], draw: drawCeoDesk });
   PLANTS.forEach(pl => items.push({ depth: pl[0] + pl[1], draw: () => drawPlant(pl) }));
   world.agents.forEach(a => items.push({ depth: a.depth(), draw: () => drawAgentBody(a) }));
+  items.push({ depth: world.ceo.depth(), draw: () => drawAgentBody(world.ceo) });
   items.sort((x, y) => x.depth - y.depth).forEach(it => it.draw());
   // 라벨/말풍선은 맨 위 오버레이 (가려짐 방지)
-  world.agents.slice().sort((x, y) => x.depth() - y.depth()).forEach(a => drawAgentLabel(a));
+  const labeled = [...world.agents, world.ceo].sort((x, y) => x.depth() - y.depth());
+  labeled.forEach(a => drawAgentLabel(a));
   ctx.restore();
 }

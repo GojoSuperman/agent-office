@@ -4,7 +4,8 @@
 // 이 계층만이 타일 좌표·이동·말풍선을 안다. 소스(백엔드)는 이걸 몰라도 된다.
 // 또한 이벤트가 없을 때의 앰비언트 행동(자리 복귀·잡담·커피)도 여기서 만든다.
 // ============================================================================
-import { DESKS, MEETING, STAGE_OWNER, WORK_LINES, TALK_LINES, TOOL_LABELS, pick } from './config.js';
+import { DESKS, MEETING, STAGE_OWNER, WORK_LINES, TALK_LINES, TOOL_LABELS, CEO_ROOM,
+  BOSS_LINES, BOSS_REACTIONS, BOSS_APPROVAL_LINES, BOSS_GRANT_LINES, BOSS_REJECT_LINES, pick } from './config.js';
 import { neighborTile } from './pathfinding.js';
 import { clock } from './clock.js';
 
@@ -14,6 +15,7 @@ export class Choreographer {
     this.onTaskChange = onTaskChange || (() => {}); // 보드 갱신 콜백
     this.onApproval = onApproval || (() => {});     // 결재 요청 → UI 패널 표시 콜백
     this.quiet = quiet; // true(라이브): 앰비언트 가짜 대사 끔 — 실제 작업 이벤트 말풍선만 표시
+    this.approvalPending = false; // 결재 대기 중이면 대표는 방에서 담당자 보고를 받는다
   }
 
   // --- 의미 이벤트 처리 ---
@@ -74,27 +76,28 @@ export class Choreographer {
         break;
       }
       case 'approval.request': {
-        // PM이 최고 승인자에게 플랜 결재 상신 → 대기. 패널 표시는 main의 콜백이 담당.
-        const pm = w.byId.pm;
-        if (pm) {
-          pm.status = 'idle';
-          pm.say('결재 부탁드립니다! 📋');
-        }
+        // PM이 대표에게 플랜 결재 상신 → PM이 대표실로 보고하러 입장. 패널 표시는 main의 콜백.
+        this.approvalPending = true;
+        this._sendPmToReport();
         this.onApproval(ev);
         break;
       }
       case 'approval.granted': {
-        const pm = w.byId.pm;
-        if (pm) { pm.say('승인받았어요! 진행합시다 🚀'); }
-        this._sendToDesk('pm');
+        this.approvalPending = false;
+        const pm = w.byId.pm, ceo = w.ceo;
+        if (ceo) ceo.say(pick(BOSS_GRANT_LINES), 3);
+        if (pm) pm.say('감사합니다! 진행하겠습니다 🚀', 3);
+        setTimeout(() => this._sendToDesk('pm'), 1200); // 인사 후 자리 복귀
         break;
       }
       case 'approval.rejected': {
-        const pm = w.byId.pm;
+        this.approvalPending = false;
+        const pm = w.byId.pm, ceo = w.ceo;
+        if (ceo) ceo.say(pick(BOSS_REJECT_LINES), 3);
         if (pm) {
           pm.status = 'blocked';
-          pm.say('반려됐네요... 다시 정리할게요 ✍️');
-          setTimeout(() => { if (pm.status === 'blocked') { pm.status = 'working'; pm.say('플랜 수정 중 📝'); } }, 2400);
+          pm.say('죄송합니다... 다시 정리하겠습니다 😢', 3);
+          setTimeout(() => { this._sendToDesk('pm'); pm.status = 'working'; }, 1600);
         }
         break;
       }
@@ -112,9 +115,11 @@ export class Choreographer {
   // --- 앰비언트(이벤트 없을 때의 생동감) ---
   updateAmbient(dt) {
     const w = this.world;
+    this.updateCeo(dt); // 대표는 회의/결재와 무관하게 항상 갱신
     if (w.meetingActive) return;
     for (const a of w.agents) {
       if (a.path.length) continue;
+      if (this.approvalPending && a.id === 'pm') continue; // 결재 보고 중인 PM 은 방에서 대기
       if (a.status === 'blocked' || a.status === 'meeting') continue;
       if (clock.t < a.nextThink) continue;
       a.nextThink = clock.t + 3 + Math.random() * 4;
@@ -138,6 +143,63 @@ export class Choreographer {
         if (Math.random() < 0.25) a.say(pick(WORK_LINES[a.id]));
       }
     }
+  }
+
+  // --- 대표(CEO) 앰비언트: 방에서 대기하다 가끔 나와 꼰대 한마디 ---
+  updateCeo(dt) {
+    const ceo = this.world.ceo;
+    if (!ceo || ceo.path.length) return; // 이동 중이면 대기
+    const home = CEO_ROOM.seat;
+    const atHome = Math.round(ceo.pos[0]) === home[0] && Math.round(ceo.pos[1]) === home[1];
+
+    // 회의 중이거나 결재 대기 중이면 방을 지킨다(결재 땐 가끔 담당자에게 한마디)
+    if (this.world.meetingActive || this.approvalPending) {
+      if (!atHome) { this._ceoHome(); return; }
+      ceo.status = 'idle';
+      if (this.approvalPending && clock.t >= ceo.nextThink) {
+        ceo.nextThink = clock.t + 5 + Math.random() * 5;
+        if (Math.random() < 0.6) ceo.say(pick(BOSS_APPROVAL_LINES), 3);
+      }
+      return;
+    }
+
+    if (clock.t < ceo.nextThink) return;
+    ceo.nextThink = clock.t + 14 + Math.random() * 16;
+    if (!atHome) { this._ceoHome(); return; } // 밖에 있었으면 방으로 복귀
+
+    // 방에 있음 → 70% 확률로 직원 자리로 출동해 잔소리
+    if (Math.random() < 0.7) {
+      const target = pick(this.world.agents.filter(a => a.atSeat)) || pick(this.world.agents);
+      ceo.status = 'walking';
+      ceo.goTo(neighborTile(DESKS[target.id].seat));
+      ceo.onArrive = () => {
+        ceo.status = 'idle';
+        ceo.say(pick(BOSS_LINES), 3.6);
+        setTimeout(() => { if (target) target.say(pick(BOSS_REACTIONS), 2.8); }, 700);
+        ceo.nextThink = clock.t + 4 + Math.random() * 3; // 잠깐 서 있다 복귀
+      };
+    }
+  }
+
+  _ceoHome() {
+    const ceo = this.world.ceo, home = CEO_ROOM.seat;
+    if (ceo.path.length) return;
+    if (Math.round(ceo.pos[0]) === home[0] && Math.round(ceo.pos[1]) === home[1]) { ceo.status = 'idle'; return; }
+    ceo.status = 'walking';
+    ceo.goTo(home);
+    ceo.onArrive = () => { ceo.status = 'idle'; };
+  }
+
+  _sendPmToReport() {
+    const pm = this.world.byId.pm, ceo = this.world.ceo;
+    if (!pm) return;
+    pm.onArrive = null;
+    pm.goTo(CEO_ROOM.report);
+    pm.onArrive = () => {
+      pm.status = 'idle';
+      pm.say('대표님, 결재 부탁드립니다! 📋', 3.5);
+      if (ceo) setTimeout(() => ceo.say(pick(BOSS_APPROVAL_LINES), 3.2), 900);
+    };
   }
 
   // --- 내부 헬퍼 ---

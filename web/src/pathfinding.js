@@ -1,13 +1,14 @@
 // ============================================================================
 // 격자 경로탐색 (BFS, 4방향). 걷기 가능 판정은 config 배치에서 파생.
 // ============================================================================
-import { GRID_W, GRID_H, DESKS, MEETING, PLANTS } from './config.js';
+import { GRID_W, GRID_H, DESKS, MEETING, PLANTS, CEO_ROOM } from './config.js';
 
 const blocked = new Set();
 const key = (x, y) => x + ',' + y;
 Object.values(DESKS).forEach(d => blocked.add(key(d.furn[0], d.furn[1])));
 blocked.add(key(MEETING.table[0], MEETING.table[1]));
 PLANTS.forEach(p => blocked.add(key(p[0], p[1])));
+blocked.add(key(CEO_ROOM.desk[0], CEO_ROOM.desk[1])); // 중역 책상
 
 export function walkable(x, y) {
   return x >= 0 && y >= 0 && x < GRID_W && y < GRID_H && !blocked.has(key(x, y));

@@ -9,7 +9,8 @@ import { clock } from './clock.js';
 export class Agent {
   constructor(def) {
     Object.assign(this, def);           // id, name, role, color, hair
-    this.pos = [...DESKS[this.id].seat]; // 부동 타일 좌표
+    this.home = def.home || DESKS[this.id].seat; // 기본 위치(책상 없는 CEO 는 def.home)
+    this.pos = [...this.home];           // 부동 타일 좌표
     this.path = [];                      // 남은 경유 타일들
     this.status = 'working';
     this.speech = null;                  // { text, until }
@@ -26,7 +27,7 @@ export class Agent {
   say(text, dur = 2.4) { this.speech = { text, until: clock.t + dur }; }
 
   get atSeat() {
-    const s = DESKS[this.id].seat;
+    const s = this.home;
     return this.pos[0] === s[0] && this.pos[1] === s[1];
   }
 

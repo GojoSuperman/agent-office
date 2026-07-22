@@ -4,7 +4,7 @@
 // 태스크의 진실 원천은 소스(백엔드)이며, 여기 tasks 는 이벤트로 채워지는 거울이다.
 // ============================================================================
 import { Agent } from './agent.js';
-import { AGENT_DEFS, STAGES } from './config.js';
+import { AGENT_DEFS, CEO_DEF, STAGES } from './config.js';
 
 // 이벤트의 stage(이름 문자열 또는 인덱스)를 보드 인덱스로 정규화
 function stageIndex(stage) {
@@ -17,6 +17,8 @@ export class World {
   constructor() {
     this.agents = AGENT_DEFS.map(def => new Agent(def));
     this.byId = Object.fromEntries(this.agents.map(a => [a.id, a]));
+    this.ceo = new Agent(CEO_DEF); // 대표(별도 엔티티 — agents/byId 루프에 넣지 않음)
+    this.ceo.status = 'idle';
     this.tasks = [];          // { id, name, stage }
     this.meetingActive = false;
     this.usage = new Map();   // model → { input, output, cost, calls }
@@ -40,5 +42,5 @@ export class World {
   }
   findTask(id) { return this.tasks.find(t => t.id === id); }
 
-  update(dt) { this.agents.forEach(a => a.update(dt)); }
+  update(dt) { this.agents.forEach(a => a.update(dt)); this.ceo.update(dt); }
 }
