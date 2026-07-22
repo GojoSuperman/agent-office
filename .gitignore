@@ -19,6 +19,7 @@ server/workspace/
 # ── 개인 로컬 설정 / 플러그인 상태 (PC마다 다름, 커밋 금지) ──
 .claude/
 .bkit/
+scripts/office-start.local.sh
 
 # ── 로그 / OS / 에디터 ──
 *.log

@@ -32,11 +32,16 @@ if ! command -v node > /dev/null 2>&1; then
 fi
 
 # ---------------------------------------------------------------------------
-# 에이전트 실행 계정: 교육용 계정(chungwonjoung@gmail.com)이 로그인된
-# ~/.claude-edu 프로필을 사용한다. (이미 설정돼 있으면 그 값을 존중)
-# 다른 계정으로 되돌리려면 아래 줄을 지우거나 원하는 프로필 경로로 바꾸면 된다.
+# 로컬 개인 설정(커밋 안 됨): 같은 폴더에 office-start.local.sh 가 있으면 불러온다.
+# 특정 Claude 계정 프로필을 쓰려면 그 파일에서
+#   export CLAUDE_CONFIG_DIR="$HOME/.claude-edu"
+# 처럼 지정한다. 파일이 없으면 Claude Code 표준 기본값(~/.claude)을 사용.
 # ---------------------------------------------------------------------------
-export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude-edu}"
+_local_cfg="$(dirname "$0")/office-start.local.sh"
+if [ -f "$_local_cfg" ]; then
+  # shellcheck disable=SC1090
+  . "$_local_cfg"
+fi
 
 PIDS=()
 if curl -s -m 1 localhost:8787/health > /dev/null 2>&1; then
