@@ -100,6 +100,19 @@ node web/serve.mjs                            # 포트 5173
 
 `http://localhost:8787/health` 로 현재 모드/인증 상태를 확인할 수 있습니다.
 
+### 원클릭 실행 (Windows + WSL)
+
+`scripts/office-start.sh` 가 백엔드+프런트를 띄우고 브라우저를 자동으로 엽니다. 바탕화면에 아래 내용의
+배치 파일(예: `에이전트 사무실.bat`)을 만들어 두면 더블클릭 한 번으로 실행됩니다:
+
+```bat
+@echo off
+title Agent Office
+wsl.exe -- bash -lc "/mnt/f/agent-office/scripts/office-start.sh"
+```
+
+> 경로(`/mnt/f/...`)는 본인 클론 위치로 수정하세요. 창을 닫으면 서버도 함께 종료됩니다.
+
 ---
 
 ## 환경 변수
