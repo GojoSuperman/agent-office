@@ -5,7 +5,7 @@
 // 또한 이벤트가 없을 때의 앰비언트 행동(자리 복귀·잡담·커피)도 여기서 만든다.
 // ============================================================================
 import { DESKS, MEETING, STAGE_OWNER, WORK_LINES, TALK_LINES, TOOL_LABELS, CEO_ROOM,
-  BOSS_LINES, BOSS_REACTIONS, BOSS_APPROVAL_LINES, BOSS_GRANT_LINES, BOSS_REJECT_LINES, pick } from './config.js';
+  BOSS_LINES, BOSS_REACTIONS, BOSS_APPROVAL_LINES, BOSS_GRANT_LINES, BOSS_REJECT_LINES, BREAK_LINES, pick } from './config.js';
 import { neighborTile } from './pathfinding.js';
 import { clock } from './clock.js';
 
@@ -16,11 +16,21 @@ export class Choreographer {
     this.onApproval = onApproval || (() => {});     // 결재 요청 → UI 패널 표시 콜백
     this.quiet = quiet; // true(라이브): 앰비언트 가짜 대사 끔 — 실제 작업 이벤트 말풍선만 표시
     this.approvalPending = false; // 결재 대기 중이면 대표는 방에서 담당자 보고를 받는다
+    this.breakers = new Set();    // 커피 브레이크 중인 직원 id
+    this.breakUntil = 0;          // 현재 브레이크 종료 시각
+    this.nextBreak = 0;           // 다음 브레이크 검토 시각
+    this.lastEventAt = -999;      // 마지막 실제 활동(이벤트) 시각 — 조용할 때만 브레이크
   }
 
   // --- 의미 이벤트 처리 ---
   handle(ev) {
     const w = this.world;
+    // 실제 활동 발생 → 진행 중인 커피 브레이크는 해산(모두 자리 복귀)
+    this.lastEventAt = clock.t;
+    if (this.breakers.size) {
+      for (const id of this.breakers) this._sendToDesk(id);
+      this.breakers.clear();
+    }
     switch (ev.type) {
       case 'task.create': {
         w.addTask(ev.taskId, ev.name, ev.stage);
@@ -115,10 +125,12 @@ export class Choreographer {
   // --- 앰비언트(이벤트 없을 때의 생동감) ---
   updateAmbient(dt) {
     const w = this.world;
-    this.updateCeo(dt); // 대표는 회의/결재와 무관하게 항상 갱신
+    this.updateCeo(dt);   // 대표는 회의/결재와 무관하게 항상 갱신
+    this.updateBreak(dt); // 유휴 시 커피 브레이크
     if (w.meetingActive) return;
     for (const a of w.agents) {
       if (a.path.length) continue;
+      if (this.breakers.has(a.id)) continue;               // 커피 브레이크 중인 직원은 별도 관리
       if (this.approvalPending && a.id === 'pm') continue; // 결재 보고 중인 PM 은 방에서 대기
       if (a.status === 'blocked' || a.status === 'meeting') continue;
       if (clock.t < a.nextThink) continue;
@@ -143,6 +155,50 @@ export class Choreographer {
         if (Math.random() < 0.25) a.say(pick(WORK_LINES[a.id]));
       }
     }
+  }
+
+  // --- 커피 브레이크: 유휴 시 2~3명이 테이블에 모여 잡담/커피 ---
+  updateBreak(dt) {
+    const w = this.world;
+    if (w.meetingActive) { this.breakers.clear(); return; }
+
+    // 진행 중인 브레이크 종료 → 해산(자리 복귀)
+    if (this.breakers.size && clock.t > this.breakUntil) {
+      for (const id of this.breakers) this._sendToDesk(id);
+      this.breakers.clear();
+    }
+    // 브레이크 중: 테이블에 도착한 사람들 잡담/커피
+    if (this.breakers.size) {
+      for (const id of this.breakers) {
+        const a = w.byId[id];
+        if (!a || a.path.length || clock.t < a.nextThink) continue;
+        a.nextThink = clock.t + 3 + Math.random() * 3;
+        a.status = 'idle';
+        a.say(pick(BREAK_LINES), 2.8);
+      }
+      return;
+    }
+    // 새 브레이크 시작: 사무실이 한동안 조용할 때만(진행 중이면 억제)
+    if (clock.t < this.nextBreak || clock.t - this.lastEventAt < 6) return;
+    this.nextBreak = clock.t + 22 + Math.random() * 26;
+    this._startCoffeeBreak();
+  }
+
+  _startCoffeeBreak() {
+    const w = this.world;
+    if (this.approvalPending) return;
+    const avail = w.agents.filter(a => !a.path.length && a.atSeat && a.status !== 'blocked' && a.status !== 'meeting');
+    if (avail.length < 2) return;
+    const n = Math.min(avail.length, Math.random() < 0.5 ? 3 : 2); // 2~3명
+    const chosen = avail.slice().sort(() => Math.random() - 0.5).slice(0, n);
+    const seats = MEETING.seats.slice().sort(() => Math.random() - 0.5);
+    chosen.forEach((a, i) => {
+      a.onArrive = null;
+      a.goTo(seats[i]);
+      a.onArrive = () => { a.status = 'idle'; a.say(pick(BREAK_LINES), 2.8); a.nextThink = clock.t + 2 + Math.random() * 3; };
+      this.breakers.add(a.id);
+    });
+    this.breakUntil = clock.t + 9 + Math.random() * 7; // 9~16초 휴식
   }
 
   // --- 대표(CEO) 앰비언트: 방에서 대기하다 가끔 나와 꼰대 한마디 ---
