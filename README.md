@@ -108,7 +108,9 @@ export ANTHROPIC_API_KEY=sk-ant-...       # Console에서 발급
 2. **(선택) 아이콘 입히기** — `.bat` 은 아이콘 지정이 안 되므로, 바로가기(`.lnk`)를 만들면 앱 아이콘을 붙일 수 있습니다.
    - `.bat` 우클릭 → *바로가기 만들기*
    - 바로가기 우클릭 → *속성 → 아이콘 변경* → 저장소의 `docs/office.ico` 선택
-     (Windows 경로 예: `F:\agent-office\docs\office.ico` 또는 `\\wsl$\Ubuntu\...`)
+     - 저장소가 Windows 드라이브(예: `F:\`)에 있으면 그냥 `F:\agent-office\docs\office.ico`
+     - WSL 안(리눅스 홈)에 있으면 `\\wsl.localhost\Ubuntu\home\사용자\agent-office\docs\office.ico`
+       — 여기서 `Ubuntu` 는 **본인이 설치한 WSL 리눅스 이름**입니다(다르면 그 이름으로 교체. 목록은 터미널에서 `wsl -l` 로 확인)
    - 바로가기를 바탕화면에 두기
 
 3. **더블클릭 실행** — 터미널 창이 뜨며 서버가 실행되고, 잠시 뒤 기본 브라우저가

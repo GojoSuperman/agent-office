@@ -67,10 +67,13 @@ for _ in $(seq 1 20); do
 done
 
 if [ "${OFFICE_NO_BROWSER:-}" != "1" ]; then
+  _url="http://localhost:5173/?live"
   if command -v explorer.exe > /dev/null 2>&1; then
-    explorer.exe "http://localhost:5173/?live"   # WSL → Windows 기본 브라우저
+    explorer.exe "$_url"                       # WSL → Windows 기본 브라우저
+  elif command -v open > /dev/null 2>&1; then
+    open "$_url"                               # macOS
   else
-    xdg-open "http://localhost:5173/?live" 2>/dev/null || true
+    xdg-open "$_url" 2>/dev/null || true       # 리눅스
   fi
 fi
 
