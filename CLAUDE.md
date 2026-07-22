@@ -11,7 +11,7 @@
 여러 Claude 에이전트에게 직함·역할을 주고 한 프로젝트를 협업 완성시키되, 그 과정을 아이소메트릭 사무실에서
 캐릭터가 움직이는 모습으로 실시간 시각화하는 웹 앱. 프런트(의존성 0 캔버스) + 백엔드(SSE + Claude Agent SDK).
 
-## 현재 상태 (2026-07-22 기준)
+## 현재 상태 (2026-07-23 기준)
 
 - ✅ **1단계** 시각화 프로토타입 (단일 파일 `index.html` — 참고용)
 - ✅ **2단계** 모듈 리팩터링 + 이벤트 프로토콜 (`web/`)
@@ -21,6 +21,7 @@
 - ✅ 승인 게이트(기획 후 사용자 결재) + 계정 표시 + 산출물 열람/미리보기 + 진행률 바 + 새로고침 복원 + 실작업 말풍선
 - ✅ **라이브 실제 실행 검증 완료** (구구단 게임 1사이클: 결재→QA 반려·재작업→산출물 8개, 토큰 집계 정상)
 - ✅ GitHub 공개 (`agent-office`, MIT)
+- ✅ **원클릭 실행 스크립트**(`scripts/office-start.sh`) + 바탕화면 단축키 — **사용자 실환경 검증 완료(2026-07-23)**
 - ⏳ **남은 일**: 아래 "다음 작업" 참고
 
 ## 빠르게 실행
@@ -155,12 +156,23 @@ mock 모드도 동일 흐름(가짜 플랜)이라 무료로 결재 UI 테스트 
 막판 수정 이력: 역할 실패 시 파이프라인 전체가 죽던 버그 수정(턴 한도 24, `OFFICE_MAX_TURNS`),
 보드 stage 문자열/인덱스 불일치 버그 수정, 라이브 앰비언트 가짜 대사 침묵(quiet).
 
+**2026-07-23 작업 (원클릭 실행 · 계정 · 문서)**:
+- `office-start.sh`: 바탕화면 단축키 실행 시 nvm 미로드로 `node: command not found` 나던 문제 수정
+  (nvm.sh 로드 → 실패 시 `~/.nvm/versions/node/*/bin` 최신 버전을 PATH에 추가 → 없으면 안내 후 종료).
+  브라우저 자동 열기에 macOS 폴백 추가: `explorer.exe`(WSL) → `open`(macOS) → `xdg-open`(리눅스).
+- **계정 프로필 분리**: 특정 Claude 계정으로 에이전트를 돌리려면 `scripts/office-start.local.sh`(커밋 안 됨,
+  `.gitignore` 제외)에서 `export CLAUDE_CONFIG_DIR=...` 지정. `office-start.sh`가 있으면 소싱함.
+  파일 없으면 표준 `~/.claude` 사용. (이 PC는 교육용 `~/.claude-edu` = chungwonjoung@gmail.com 로 지정해 둠.)
+- **README 하이브리드 재구성**: '이미 Claude Code 사용 중' 빠른 실행을 상단에, 사전준비·로그인 상세는
+  `<details>` 접기로 초심자용. '바탕화면 단축키 만들기'(.bat→.lnk 아이콘 `docs/office.ico`→실행) 섹션 추가.
+
 ## 주의사항 · 함정
 
 - **역할 id는 프런트(`config.js`)·백엔드(`roles.mjs`)가 반드시 일치.** 추가/변경 시 양쪽 + `DESKS`·`WORK_LINES`·`STAGE_OWNER` 동기화.
 - **`protocol.js` ↔ `protocol.mjs` 동기화** (이벤트 계약).
 - **`index.html`(로컬)·`office-artifact.html`(아티팩트)는 1단계 단일 파일 프로토타입(4명)** — 본체는 `web/`(6명). 혼동 주의.
-- **시크릿**: `.env`·`*.credentials.json`·`node_modules/`·`server/workspace/` 는 `.gitignore` 로 제외됨. 키/토큰을 코드·문서에 넣지 말 것.
+- **시크릿**: `.env`·`*.credentials.json`·`node_modules/`·`server/workspace/`·`scripts/office-start.local.sh` 는 `.gitignore` 로 제외됨. 키/토큰을 코드·문서에 넣지 말 것.
+- **`office-start.local.sh` 는 커밋 안 됨(PC별 개인 설정).** 다른 PC/사람에겐 없으므로 표준 `~/.claude` 로 폴백함 — 계정 프로필 하드코딩을 스크립트 본체에 다시 넣지 말 것.
 - **Agent SDK는 바이너리 번들** → 실행에 별도 CLI 설치 불필요(로그인 단계에만 `claude` 사용).
 - 아티팩트 URL(1단계 게시본): https://claude.ai/code/artifact/e9708aaa-73a4-4cdc-90e8-dbb115150560 (소유자만 갱신 가능).
 
