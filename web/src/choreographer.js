@@ -4,8 +4,10 @@
 // 이 계층만이 타일 좌표·이동·말풍선을 안다. 소스(백엔드)는 이걸 몰라도 된다.
 // 또한 이벤트가 없을 때의 앰비언트 행동(자리 복귀·잡담·커피)도 여기서 만든다.
 // ============================================================================
-import { DESKS, MEETING, STAGE_OWNER, WORK_LINES, TALK_LINES, TOOL_LABELS, CEO_ROOM,
+import { DESKS, MEETING, STAGES, STAGE_OWNER, WORK_LINES, TALK_LINES, TOOL_LABELS, CEO_ROOM,
   BOSS_LINES, BOSS_REACTIONS, BOSS_APPROVAL_LINES, BOSS_GRANT_LINES, BOSS_REJECT_LINES, BREAK_LINES, pick } from './config.js';
+
+const DONE_STAGE = STAGES.indexOf('완료'); // 이 단계 미만 작업이 있으면 프로젝트 진행 중
 import { neighborTile } from './pathfinding.js';
 import { clock } from './clock.js';
 
@@ -178,10 +180,17 @@ export class Choreographer {
       }
       return;
     }
-    // 새 브레이크 시작: 사무실이 한동안 조용할 때만(진행 중이면 억제)
+    // 새 브레이크 시작: 프로젝트가 완전히 유휴일 때만
+    if (this._projectBusy()) return;                                      // 진행 중이면 커피 타임 없음
     if (clock.t < this.nextBreak || clock.t - this.lastEventAt < 6) return;
     this.nextBreak = clock.t + 22 + Math.random() * 26;
     this._startCoffeeBreak();
+  }
+
+  // 완료되지 않은 작업이 하나라도 있으면 프로젝트 진행 중 + 결재 대기도 진행으로 간주
+  _projectBusy() {
+    if (this.approvalPending) return true;
+    return this.world.tasks.some(t => t.stage < DONE_STAGE);
   }
 
   _startCoffeeBreak() {
