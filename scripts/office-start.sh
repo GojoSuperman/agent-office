@@ -8,6 +8,36 @@
 set -u
 cd "$(dirname "$0")/.."
 
+# ---------------------------------------------------------------------------
+# node PATH 확보: 바탕화면 단축키로 실행하면 nvm 이 로드되지 않아 `node` 를
+# 못 찾는 경우가 있다. nvm 을 직접 로드하고, 안 되면 설치된 최신 버전을 PATH 에 추가.
+# ---------------------------------------------------------------------------
+if ! command -v node > /dev/null 2>&1; then
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  # 1) nvm 스크립트 로드 시도
+  if [ -s "$NVM_DIR/nvm.sh" ]; then
+    # shellcheck disable=SC1090
+    . "$NVM_DIR/nvm.sh" > /dev/null 2>&1
+  fi
+  # 2) 그래도 없으면 설치된 node 버전 중 최신 것을 PATH 에 직접 추가
+  if ! command -v node > /dev/null 2>&1; then
+    node_bin="$(ls -d "$NVM_DIR"/versions/node/*/bin 2>/dev/null | sort -V | tail -n 1)"
+    [ -n "$node_bin" ] && export PATH="$node_bin:$PATH"
+  fi
+fi
+
+if ! command -v node > /dev/null 2>&1; then
+  echo "❌ node 를 찾을 수 없습니다. WSL 터미널에서 'node -v' 로 설치를 확인하세요." >&2
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# 에이전트 실행 계정: 교육용 계정(chungwonjoung@gmail.com)이 로그인된
+# ~/.claude-edu 프로필을 사용한다. (이미 설정돼 있으면 그 값을 존중)
+# 다른 계정으로 되돌리려면 아래 줄을 지우거나 원하는 프로필 경로로 바꾸면 된다.
+# ---------------------------------------------------------------------------
+export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude-edu}"
+
 PIDS=()
 if curl -s -m 1 localhost:8787/health > /dev/null 2>&1; then
   echo "· 백엔드(:8787) 이미 실행 중 — 재사용"
