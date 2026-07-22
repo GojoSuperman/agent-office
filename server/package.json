@@ -1,0 +1,13 @@
+{
+  "name": "agent-office-server",
+  "private": true,
+  "type": "module",
+  "version": "0.2.0",
+  "description": "에이전트 사무실 3단계 백엔드 — Claude Agent SDK(구독 인증)로 실제 에이전트가 작업하고 의미 이벤트를 SSE로 방출",
+  "scripts": {
+    "start": "node src/index.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "latest"
+  }
+}

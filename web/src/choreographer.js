@@ -1,0 +1,183 @@
+// ============================================================================
+// Choreographer — "무슨 일이 일어났나(의미 이벤트)"를 "어떻게 보여줄까(연출)"로 번역.
+//
+// 이 계층만이 타일 좌표·이동·말풍선을 안다. 소스(백엔드)는 이걸 몰라도 된다.
+// 또한 이벤트가 없을 때의 앰비언트 행동(자리 복귀·잡담·커피)도 여기서 만든다.
+// ============================================================================
+import { DESKS, MEETING, STAGE_OWNER, WORK_LINES, TALK_LINES, TOOL_LABELS, pick } from './config.js';
+import { neighborTile } from './pathfinding.js';
+import { clock } from './clock.js';
+
+export class Choreographer {
+  constructor(world, { onTaskChange, onApproval, quiet = false } = {}) {
+    this.world = world;
+    this.onTaskChange = onTaskChange || (() => {}); // 보드 갱신 콜백
+    this.onApproval = onApproval || (() => {});     // 결재 요청 → UI 패널 표시 콜백
+    this.quiet = quiet; // true(라이브): 앰비언트 가짜 대사 끔 — 실제 작업 이벤트 말풍선만 표시
+  }
+
+  // --- 의미 이벤트 처리 ---
+  handle(ev) {
+    const w = this.world;
+    switch (ev.type) {
+      case 'task.create': {
+        w.addTask(ev.taskId, ev.name, ev.stage);
+        this.onTaskChange();
+        break;
+      }
+      case 'task.advance': {
+        w.setTaskStage(ev.taskId, ev.stage);
+        this.onTaskChange();
+        const ownerId = ev.ownerId || STAGE_OWNER[ev.stage];
+        if (ownerId && w.byId[ownerId]) {
+          const t = w.findTask(ev.taskId);
+          this._sendToDesk(ownerId, t ? `"${t.name}" 맡았어요!` : '맡았어요!');
+        }
+        break;
+      }
+      case 'task.assigned': {
+        this._sendToDesk(ev.agentId, '맡았어요!');
+        break;
+      }
+      case 'agent.thinking': {
+        const a = w.byId[ev.agentId];
+        if (a) { a.status = 'working'; a.say('💭 ' + ev.summary, 4.5); } // 실제 발화는 길게 표시
+        break;
+      }
+      case 'agent.tool_call': {
+        const a = w.byId[ev.agentId];
+        if (a) {
+          a.status = 'working';
+          const label = TOOL_LABELS[ev.tool] || ev.tool;
+          a.say(ev.target ? `${label} · ${ev.target}` : label);
+        }
+        break;
+      }
+      case 'agent.output': {
+        const a = w.byId[ev.agentId];
+        if (a) a.say('완료했어요! ✅');
+        break;
+      }
+      case 'task.handoff': {
+        this._handoff(ev.from, ev.to, '리뷰 부탁해요 🙏');
+        break;
+      }
+      case 'task.rejected': {
+        // QA(from)가 담당자(to)에게 반려 → 담당자 잠시 '막힘' 후 재작업
+        this._handoff(ev.from, ev.to, '여기 다시 봐주세요 🙁');
+        const owner = w.byId[ev.to];
+        if (owner) {
+          owner.status = 'blocked';
+          owner.say('앗, 반려됐네요 😢');
+          setTimeout(() => { if (owner.status === 'blocked') { owner.status = 'working'; owner.say('다시 해볼게요 💪'); } }, 2600);
+        }
+        break;
+      }
+      case 'approval.request': {
+        // PM이 최고 승인자에게 플랜 결재 상신 → 대기. 패널 표시는 main의 콜백이 담당.
+        const pm = w.byId.pm;
+        if (pm) {
+          pm.status = 'idle';
+          pm.say('결재 부탁드립니다! 📋');
+        }
+        this.onApproval(ev);
+        break;
+      }
+      case 'approval.granted': {
+        const pm = w.byId.pm;
+        if (pm) { pm.say('승인받았어요! 진행합시다 🚀'); }
+        this._sendToDesk('pm');
+        break;
+      }
+      case 'approval.rejected': {
+        const pm = w.byId.pm;
+        if (pm) {
+          pm.status = 'blocked';
+          pm.say('반려됐네요... 다시 정리할게요 ✍️');
+          setTimeout(() => { if (pm.status === 'blocked') { pm.status = 'working'; pm.say('플랜 수정 중 📝'); } }, 2400);
+        }
+        break;
+      }
+      case 'meeting.start': {
+        this._startMeeting(ev.topic);
+        break;
+      }
+      case 'meeting.end': {
+        this._endMeeting();
+        break;
+      }
+    }
+  }
+
+  // --- 앰비언트(이벤트 없을 때의 생동감) ---
+  updateAmbient(dt) {
+    const w = this.world;
+    if (w.meetingActive) return;
+    for (const a of w.agents) {
+      if (a.path.length) continue;
+      if (a.status === 'blocked' || a.status === 'meeting') continue;
+      if (clock.t < a.nextThink) continue;
+      a.nextThink = clock.t + 3 + Math.random() * 4;
+      const roll = Math.random();
+      // 라이브(quiet): 자리 복귀·기지개 정도만, 가짜 대사 없음 — 말풍선은 실제 이벤트 전용
+      if (this.quiet) {
+        if (!a.atSeat) this._sendToDesk(a.id);
+        else if (roll < 0.1 && !a.speech) { a.status = 'idle'; a.say('☕'); }
+        continue;
+      }
+      if (!a.atSeat) {
+        this._sendToDesk(a.id);
+      } else if (roll < 0.28) {
+        const other = pick(w.agents.filter(x => x !== a));
+        a.goTo(neighborTile(DESKS[other.id].seat));
+        a.onArrive = () => { a.status = 'idle'; a.say(pick(TALK_LINES)); };
+      } else if (roll < 0.4) {
+        a.status = 'idle'; a.say(pick(['커피 한 잔 ☕', '음... 🤔', '거의 다 됐어요']));
+      } else {
+        a.status = 'working';
+        if (Math.random() < 0.25) a.say(pick(WORK_LINES[a.id]));
+      }
+    }
+  }
+
+  // --- 내부 헬퍼 ---
+  _sendToDesk(agentId, arriveLine) {
+    const a = this.world.byId[agentId];
+    if (!a) return;
+    a.goTo(DESKS[agentId].seat);
+    a.onArrive = () => {
+      a.status = 'working';
+      if (arriveLine) a.say(arriveLine);
+      else if (!this.quiet && Math.random() < 0.35) a.say(pick(WORK_LINES[agentId]));
+    };
+  }
+
+  _handoff(fromId, toId, line) {
+    const from = this.world.byId[fromId];
+    if (!from) return;
+    from.goTo(neighborTile(DESKS[toId].seat));
+    from.onArrive = () => {
+      from.status = 'idle';
+      from.say(line);
+      // 잠시 후 자기 자리로 복귀
+      setTimeout(() => this._sendToDesk(fromId), 1800);
+    };
+  }
+
+  _startMeeting(topic) {
+    const w = this.world;
+    w.meetingActive = true;
+    w.agents.forEach((a, i) => {
+      a.onArrive = null;
+      a.goTo(MEETING.seats[i % MEETING.seats.length]);
+      a.onArrive = () => { a.status = 'meeting'; };
+    });
+    if (w.byId.pm) w.byId.pm.say(topic ? `${topic} 시작할게요 📋` : '회의 시작할게요 📋');
+  }
+
+  _endMeeting() {
+    const w = this.world;
+    w.meetingActive = false;
+    w.agents.forEach(a => { a.onArrive = null; this._sendToDesk(a.id); });
+  }
+}

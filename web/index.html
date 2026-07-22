@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>에이전트 사무실 — 모듈판 (2단계)</title>
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header>
+    <h1>🏢 에이전트 사무실</h1>
+    <span class="sub">2단계 · 모듈 구조 + 이벤트 프로토콜</span>
+    <span class="spacer"></span>
+    <button id="btn-meeting">📢 회의 소집</button>
+    <button id="btn-pause">⏸ 일시정지</button>
+  </header>
+  <div id="topicbar" hidden>
+    <input id="topic" type="text" placeholder="프로젝트 주제 입력 (예: 할 일 관리 앱)" />
+    <button id="btn-start">▶ 프로젝트 시작</button>
+    <span id="mode" class="sub"></span>
+  </div>
+  <div id="approval" class="approval-overlay" hidden>
+    <div class="approval-card">
+      <h2>📋 플랜 결재 요청 <span id="approval-rev"></span></h2>
+      <p class="approval-hint">김기획(PM)이 올린 실행 플랜입니다. 승인해야 다음 단계로 진행합니다.</p>
+      <pre id="approval-plan"></pre>
+      <textarea id="approval-feedback" rows="2" placeholder="반려 사유 · 보완 요청 (반려 시 입력)"></textarea>
+      <div class="approval-actions">
+        <button id="btn-reject" class="reject">❌ 반려</button>
+        <button id="btn-approve" class="approve">✅ 승인</button>
+      </div>
+    </div>
+  </div>
+  <main>
+    <div id="stage"><canvas id="office"></canvas></div>
+    <aside>
+      <section>
+        <h2>프로젝트 보드</h2>
+        <div id="progress" hidden>
+          <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+          <div class="progress-label" id="progress-label"></div>
+        </div>
+        <div class="board" id="board"></div>
+      </section>
+      <section><h2>팀 구성원</h2><div class="roster" id="roster"></div></section>
+      <section><h2>모델 사용량</h2><div class="usage" id="usage"></div></section>
+      <section id="artifacts-sec" hidden><h2>산출물</h2><div class="artifacts" id="artifacts"></div></section>
+    </aside>
+  </main>
+  <footer>
+    <span class="lg"><span class="sw" style="background:#42d392"></span>작업중</span>
+    <span class="lg"><span class="sw" style="background:#ffce54"></span>이동중</span>
+    <span class="lg"><span class="sw" style="background:#5b8cff"></span>회의중</span>
+    <span class="lg"><span class="sw" style="background:#8a97ad"></span>대기</span>
+    <span class="lg"><span class="sw" style="background:#ff5d5d"></span>막힘</span>
+    <span class="spacer" style="flex:1"></span>
+    <span>이벤트 소스: <b>ScriptedSource</b> (3단계에서 WebSocketSource로 교체)</span>
+  </footer>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

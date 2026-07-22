@@ -1,0 +1,77 @@
+// ============================================================================
+// 사무실 정적 설정 — 배치·에이전트 정의·상수. 로직 없음(순수 데이터).
+// 역할 id 는 백엔드 server/src/roles.mjs 와 반드시 일치해야 한다.
+// ============================================================================
+
+export const TILE_W = 64;
+export const TILE_H = 32;
+export const GRID_W = 11;
+export const GRID_H = 9;
+export const WALL_H = 52;
+
+// 책상: furniture(막힘) 타일 + seat(에이전트가 앉는 옆칸)
+export const DESKS = {
+  pm:        { furn: [3, 1], seat: [3, 2] },
+  dev:       { furn: [5, 1], seat: [5, 2] },
+  designer:  { furn: [7, 1], seat: [7, 2] },
+  architect: { furn: [9, 1], seat: [9, 2] },
+  qa:        { furn: [1, 4], seat: [2, 4] },
+  writer:    { furn: [1, 6], seat: [2, 6] },
+};
+
+// 회의실: 러그 영역 + 테이블(막힘) + 착석 위치(6명)
+export const MEETING = {
+  rug: [[6,5],[7,5],[8,5],[6,6],[7,6],[8,6],[6,7],[7,7],[8,7]],
+  table: [7, 6],
+  seats: [[6,5],[7,5],[8,5],[6,7],[7,7],[8,7]],
+};
+
+export const PLANTS = [[0, 8], [10, 3], [0, 2]];
+
+// 에이전트 정의(정적). 런타임 상태(pos/status 등)는 Agent 인스턴스가 가짐.
+export const AGENT_DEFS = [
+  { id: 'pm',        name: '김기획', role: 'PM · 프로젝트 매니저', color: '#ff6b81', hair: '#3a2723' },
+  { id: 'architect', name: '정설계', role: '아키텍트',            color: '#ff9f43', hair: '#33291b' },
+  { id: 'dev',       name: '이개발', role: '개발자',              color: '#5b8cff', hair: '#20242e' },
+  { id: 'designer',  name: '박디자', role: '디자이너',            color: '#c78bff', hair: '#43304e' },
+  { id: 'qa',        name: '최검수', role: 'QA 엔지니어',         color: '#42d392', hair: '#2a2f26' },
+  { id: 'writer',    name: '윤문서', role: '테크라이터',          color: '#26c6da', hair: '#20323a' },
+];
+
+// 프로젝트 보드 단계와 각 단계 담당 역할 (백엔드 PIPELINE 과 정합)
+export const STAGES = ['기획', '설계', '디자인', '개발', 'QA', '문서', '완료'];
+export const STAGE_OWNER = {
+  '기획': 'pm', '설계': 'architect', '디자인': 'designer',
+  '개발': 'dev', 'QA': 'qa', '문서': 'writer',
+};
+
+export const STATUS = {
+  working: { label: '작업중', color: '#42d392', icon: '💻' },
+  walking: { label: '이동중', color: '#ffce54', icon: '🚶' },
+  meeting: { label: '회의중', color: '#5b8cff', icon: '💬' },
+  idle:    { label: '대기',   color: '#8a97ad', icon: '☕' },
+  blocked: { label: '막힘',   color: '#ff5d5d', icon: '⚠️' },
+};
+
+// 연출용 대사 풀 (모든 역할 id 에 항목이 있어야 함 — 앰비언트에서 참조)
+export const WORK_LINES = {
+  pm: ['일정 정리 중 🗂️', '요구사항 검토', '로드맵 업데이트'],
+  architect: ['구조 설계 중 🏗️', '인터페이스 정의', '트레이드오프 검토'],
+  dev: ['코딩 중... ⌨️', '버그 잡는 중 🐛', 'API 연결 완료'],
+  designer: ['시안 작업 🎨', '컬러 조정 중', '레이아웃 확정'],
+  qa: ['테스트 실행 ✅', '엣지 케이스 확인', '리그레션 체크'],
+  writer: ['문서 작성 ✍️', '예제 정리', 'README 다듬는 중'],
+};
+export const TALK_LINES = ['이거 어떻게 생각해요?', '리뷰 부탁해요 🙏', '여기 확인!', '좋은데요? 👍'];
+
+// 도구 호출 이벤트를 말풍선 문구로
+export const TOOL_LABELS = {
+  write_file: '파일 작성 ✍️',
+  read_file: '코드 읽는 중 📖',
+  run_tests: '테스트 실행 ✅',
+  search: '검색 중 🔎',
+  design: '시안 그리는 중 🎨',
+  spec: '설계 정리 🏗️',
+};
+
+export function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }

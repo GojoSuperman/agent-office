@@ -1,0 +1,28 @@
+# ── 의존성 ──
+node_modules/
+
+# ── 시크릿 / 자격증명 (절대 커밋 금지) ──
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+id_rsa*
+*.p12
+*.pfx
+.claude/.credentials.json
+**/.credentials.json
+
+# ── 에이전트 산출물(런타임 생성) ──
+server/workspace/
+
+# ── 개인 로컬 설정 / 플러그인 상태 (PC마다 다름, 커밋 금지) ──
+.claude/
+.bkit/
+
+# ── 로그 / OS / 에디터 ──
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
