@@ -5,6 +5,9 @@ import { TILE_W, TILE_H, GRID_W, GRID_H, WALL_H, DESKS, MEETING, PLANTS, STATUS 
 
 let canvas, ctx, world;
 const view = { originX: 0, originY: 0, w: 0, h: 0 };
+// 카메라: 월드를 화면에 얹기 전 적용하는 배율/이동. (x,y는 CSS 픽셀 단위 팬 오프셋)
+const camera = { scale: 1, x: 0, y: 0 };
+const ZOOM_MIN = 0.45, ZOOM_MAX = 3.5;
 
 export function initRenderer(cv, w) {
   canvas = cv;
@@ -12,6 +15,78 @@ export function initRenderer(cv, w) {
   world = w;
   resize();
   window.addEventListener('resize', resize);
+  setupCameraControls();
+}
+
+function resetCamera() { camera.scale = 1; camera.x = 0; camera.y = 0; }
+
+// 화면 좌표(CSS px) → 캔버스 내 상대 좌표
+function pointerPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+// 커서 위치를 기준으로 배율 변경(그 지점의 월드가 화면에서 고정되도록 팬 보정)
+function zoomAt(px, py, factor) {
+  const s0 = camera.scale;
+  const s1 = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s0 * factor));
+  if (s1 === s0) return;
+  camera.x = px - (s1 / s0) * (px - camera.x);
+  camera.y = py - (s1 / s0) * (py - camera.y);
+  camera.scale = s1;
+}
+
+function setupCameraControls() {
+  canvas.style.touchAction = 'none';   // 브라우저 기본 스크롤/제스처 억제(포인터 이벤트용)
+  canvas.style.cursor = 'grab';
+
+  // 휠: 커서 기준 확대/축소
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const { x, y } = pointerPos(e);
+    zoomAt(x, y, Math.exp(-e.deltaY * 0.0015));
+  }, { passive: false });
+
+  // 포인터(마우스/터치) 드래그: 이동 / 두 손가락: 핀치 줌
+  const pointers = new Map();
+  let pinchDist = 0;
+
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    pointers.set(e.pointerId, pointerPos(e));
+    if (pointers.size === 1) canvas.style.cursor = 'grabbing';
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    const prev = pointers.get(e.pointerId);
+    const cur = pointerPos(e);
+    pointers.set(e.pointerId, cur);
+
+    if (pointers.size === 1) {
+      // 이동(팬)
+      camera.x += cur.x - prev.x;
+      camera.y += cur.y - prev.y;
+    } else if (pointers.size === 2) {
+      // 핀치 줌 — 두 손가락 거리 변화로 배율, 중점 기준
+      const [a, b] = [...pointers.values()];
+      const dist = Math.hypot(a.x - b.x, a.y - b.y);
+      const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+      if (pinchDist > 0) zoomAt(mid.x, mid.y, dist / pinchDist);
+      pinchDist = dist;
+    }
+  });
+
+  const endPointer = (e) => {
+    pointers.delete(e.pointerId);
+    if (pointers.size < 2) pinchDist = 0;
+    if (pointers.size === 0) canvas.style.cursor = 'grab';
+  };
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+
+  // 더블클릭: 시점 초기화
+  canvas.addEventListener('dblclick', (e) => { e.preventDefault(); resetCamera(); });
 }
 
 export function resize() {
@@ -236,7 +311,10 @@ function drawAgentLabel(a) {
 
 export function render() {
   ctx.clearRect(0, 0, view.w, view.h);
-  drawBackground();
+  drawBackground();                 // 배경은 화면 고정(줌/팬 영향 없음)
+  ctx.save();
+  ctx.translate(camera.x, camera.y);
+  ctx.scale(camera.scale, camera.scale);
   drawWalls();
   drawFloor();
   const items = [];
@@ -247,4 +325,5 @@ export function render() {
   items.sort((x, y) => x.depth - y.depth).forEach(it => it.draw());
   // 라벨/말풍선은 맨 위 오버레이 (가려짐 방지)
   world.agents.slice().sort((x, y) => x.depth() - y.depth()).forEach(a => drawAgentLabel(a));
+  ctx.restore();
 }
