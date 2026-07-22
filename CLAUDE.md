@@ -4,6 +4,8 @@
 > 이 문서 하나로 전체 맥락·결정·실행법·남은 일을 파악할 수 있도록 자립적으로 작성했습니다.
 > 더 자세한 설계는 [`에이전트 사무실 설계도.md`](./에이전트%20사무실%20설계도.md), 사용자용 안내는 [`README.md`](./README.md) 참고.
 
+> **저장소(SSOT)**: https://github.com/GojoSuperman/agent-office — 두 PC는 push/pull로 동기화. **commit ≠ push, 자리 뜨기 전 push!**
+
 ## 한 줄 요약
 
 여러 Claude 에이전트에게 직함·역할을 주고 한 프로젝트를 협업 완성시키되, 그 과정을 아이소메트릭 사무실에서
