@@ -14,6 +14,7 @@ import { ScriptedSource } from './sources/ScriptedSource.js';
 import { SSESource } from './sources/SSESource.js';
 import { validate } from './protocol.js';
 import { initRenderer, render } from './renderer.js';
+import { audio } from './audio.js';
 import { initUI, renderBoard, renderRoster, renderUsage, initApproval, showApproval, initArtifacts, renderArtifacts } from './ui.js';
 
 const LIVE = new URLSearchParams(location.search).has('live');
@@ -116,6 +117,10 @@ function loop(ts) {
 requestAnimationFrame(loop);
 
 // ── 버튼(스크립트 모드에서만 회의 소집 동작) ──
+document.getElementById('btn-sound').onclick = (e) => {
+  const on = audio.toggle(); // 사용자 클릭에서 호출해야 자동재생 정책 통과
+  e.target.textContent = on ? '🔊 소리' : '🔇 소리';
+};
 document.getElementById('btn-meeting').onclick = () => source.triggerMeeting?.();
 document.getElementById('btn-pause').onclick = (e) => {
   paused = !paused;

@@ -5,6 +5,7 @@
 import { DESKS } from './config.js';
 import { findPath } from './pathfinding.js';
 import { clock } from './clock.js';
+import { audio } from './audio.js';
 
 export class Agent {
   constructor(def) {
@@ -17,6 +18,7 @@ export class Agent {
     this.nextThink = 0;                  // 앰비언트 행동 쿨다운
     this.bob = Math.random() * Math.PI * 2;
     this.onArrive = null;                // 도착 콜백
+    this._seed = String(this.id).split('').reduce((s, c) => s + c.charCodeAt(0), 0); // 캐릭터별 음높이
   }
 
   goTo(tile) {
@@ -24,7 +26,10 @@ export class Agent {
     if (this.path.length) this.status = 'walking';
   }
 
-  say(text, dur = 2.4) { this.speech = { text, until: clock.t + dur }; }
+  say(text, dur = 2.4) {
+    this.speech = { text, until: clock.t + dur };
+    audio.blip(this._seed);
+  }
 
   get atSeat() {
     const s = this.home;

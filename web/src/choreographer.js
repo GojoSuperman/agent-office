@@ -10,6 +10,7 @@ import { DESKS, MEETING, STAGES, STAGE_OWNER, WORK_LINES, TALK_LINES, TOOL_LABEL
 const DONE_STAGE = STAGES.indexOf('완료'); // 이 단계 미만 작업이 있으면 프로젝트 진행 중
 import { neighborTile } from './pathfinding.js';
 import { clock } from './clock.js';
+import { audio } from './audio.js';
 
 export class Choreographer {
   constructor(world, { onTaskChange, onApproval, quiet = false } = {}) {
@@ -70,6 +71,7 @@ export class Choreographer {
       case 'agent.output': {
         const a = w.byId[ev.agentId];
         if (a) a.say('완료했어요! ✅');
+        audio.event('complete');
         break;
       }
       case 'task.handoff': {
@@ -78,6 +80,7 @@ export class Choreographer {
       }
       case 'task.rejected': {
         // QA(from)가 담당자(to)에게 반려 → 담당자 잠시 '막힘' 후 재작업
+        audio.event('reject');
         this._handoff(ev.from, ev.to, '여기 다시 봐주세요 🙁');
         const owner = w.byId[ev.to];
         if (owner) {
@@ -96,6 +99,7 @@ export class Choreographer {
       }
       case 'approval.granted': {
         this.approvalPending = false;
+        audio.event('grant');
         const pm = w.byId.pm, ceo = w.ceo;
         if (ceo) ceo.say(pick(BOSS_GRANT_LINES), 3);
         if (pm) pm.say('감사합니다! 진행하겠습니다 🚀', 3);
@@ -104,6 +108,7 @@ export class Choreographer {
       }
       case 'approval.rejected': {
         this.approvalPending = false;
+        audio.event('reject');
         const pm = w.byId.pm, ceo = w.ceo;
         if (ceo) ceo.say(pick(BOSS_REJECT_LINES), 3);
         if (pm) {
@@ -114,6 +119,7 @@ export class Choreographer {
         break;
       }
       case 'meeting.start': {
+        audio.event('meeting');
         this._startMeeting(ev.topic);
         break;
       }
@@ -199,6 +205,7 @@ export class Choreographer {
     const avail = w.agents.filter(a => !a.path.length && a.atSeat && a.status !== 'blocked' && a.status !== 'meeting');
     if (avail.length < 2) return;
     const n = Math.min(avail.length, Math.random() < 0.5 ? 3 : 2); // 2~3명
+    audio.event('coffee');
     const chosen = avail.slice().sort(() => Math.random() - 0.5).slice(0, n);
     const seats = MEETING.seats.slice().sort(() => Math.random() - 0.5);
     chosen.forEach((a, i) => {
@@ -235,6 +242,7 @@ export class Choreographer {
     // 방에 있음 → 70% 확률로 직원 자리로 출동해 잔소리
     if (Math.random() < 0.7) {
       const target = pick(this.world.agents.filter(a => a.atSeat)) || pick(this.world.agents);
+      audio.event('boss');
       ceo.status = 'walking';
       ceo.goTo(neighborTile(DESKS[target.id].seat));
       ceo.onArrive = () => {
