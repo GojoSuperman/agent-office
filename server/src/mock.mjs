@@ -26,8 +26,9 @@ function fakeUsage(owner, emit) {
 }
 
 // 주제에서 작업 이름 몇 개를 만들어냄(가짜)
-function deriveTasks(topic) {
+function deriveTasks(topic, isRevision) {
   const base = (topic || '새 프로젝트').trim();
+  if (isRevision) return [{ id: 1, name: `수정: ${base}` }];
   return [
     { id: 1, name: `${base} · 핵심 기능` },
     { id: 2, name: `${base} · 화면 UI` },
@@ -35,38 +36,48 @@ function deriveTasks(topic) {
 }
 
 // 결재용 가짜 플랜 문서(마크다운). live의 plan.md 스탠드인.
-function fakePlan(topic, tasks, feedback, revision) {
+function fakePlan(topic, tasks, feedback, revision, isRevision) {
   const base = (topic || '새 프로젝트').trim();
   return [
-    `# ${base} — 실행 플랜(안) v${revision}`,
+    `# ${base} — ${isRevision ? '수정 계획(안)' : '실행 플랜(안)'} v${revision}`,
     '',
-    `**목표**: ${base}의 핵심 가치를 최소 범위로 빠르게 구현합니다.`,
+    isRevision
+      ? `**수정 목표**: 기존 산출물을 요청 범위만 최소 변경으로 수정합니다.`
+      : `**목표**: ${base}의 핵심 가치를 최소 범위로 빠르게 구현합니다.`,
     '',
     '## 작업 목록',
     ...tasks.map((t, i) => `${i + 1}. ${t.name}`),
     '',
     '## 진행 방향',
-    '- 설계 → 디자인 → 개발 → QA → 문서 순으로 진행',
+    isRevision ? '- 개발 → QA → 문서 순 경량 사이클 (시작 전 자동 백업)' : '- 설계 → 디자인 → 개발 → QA → 문서 순으로 진행',
     '- QA 반려 시 개발 1회 재작업 후 재검수',
     feedback ? `\n> 반영한 피드백: ${feedback}` : '',
   ].join('\n');
 }
 
-export async function runMock(topic, emit, signal, gate) {
-  const alive = () => !signal?.aborted;
+// 수정 의뢰용 경량 파이프라인(목) — orchestrator.mjs REVISION_PIPELINE 과 동일 구성
+const REVISION_PIPELINE = [
+  { stage: '개발', owner: 'dev' },
+  { stage: 'QA', owner: 'qa' },
+  { stage: '문서', owner: 'writer' },
+];
 
-  emit(Events.meetingStart('킥오프 · ' + (topic || '새 프로젝트')));
+export async function runMock(topic, emit, signal, gate, opts = {}) {
+  const alive = () => !signal?.aborted;
+  const isRevision = !!opts.revisionOf;
+
+  emit(Events.meetingStart((isRevision ? '수정 킥오프 · ' : '킥오프 · ') + (topic || '새 프로젝트')));
   await wait(2500); if (!alive()) return;
   emit(Events.meetingEnd());
 
-  emit(Events.thinking('pm', '요구사항 분해 중'));
+  emit(Events.thinking('pm', isRevision ? '기존 산출물 분석 중' : '요구사항 분해 중'));
   await wait(1500); if (!alive()) return;
 
   // ── 결재 게이트: PM 플랜 → 사용자 승인 후에만 진행. 반려 시 피드백 반영 재작성 ──
-  const tasks = deriveTasks(topic);
+  const tasks = deriveTasks(topic, isRevision);
   let feedback = '';
   for (let revision = 1; gate; revision++) {
-    emit(Events.approvalRequest(fakePlan(topic, tasks, feedback, revision), revision));
+    emit(Events.approvalRequest(fakePlan(topic, tasks, feedback, revision, isRevision), revision));
     fakeUsage('pm', emit);
     const d = await gate.wait();
     if (!alive()) return;
@@ -83,7 +94,7 @@ export async function runMock(topic, emit, signal, gate) {
 
   for (const t of tasks) {
     let prev = 'pm';
-    for (const { stage, owner } of PIPELINE) {
+    for (const { stage, owner } of (isRevision ? REVISION_PIPELINE : PIPELINE)) {
       if (!alive()) return;
       emit(Events.taskHandoff(t.id, prev, owner));
       await wait(900);

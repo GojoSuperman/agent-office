@@ -82,8 +82,10 @@ export function renderUsage() {
 // ── 산출물 패널 ────────────────────────────────────────────────────────
 // 최신 프로젝트의 파일 목록을 링크로 표시. index.html 이 있으면 "결과물 열어보기" 버튼 강조.
 let artifactsBase = '';
-export function initArtifacts(baseUrl) {
+let onReviseCb = () => {};
+export function initArtifacts(baseUrl, onRevise) {
   artifactsBase = baseUrl;
+  if (onRevise) onReviseCb = onRevise;
   document.getElementById('artifacts-sec').hidden = false;
 }
 
@@ -108,10 +110,13 @@ export function renderArtifacts(projects) {
   // 선택된 프로젝트(없어졌으면 최신으로 폴백)
   const p = lastProjects.find((x) => x.id === selectedProject) || lastProjects[0];
 
-  // 이 사무실에서 한 작업(프로젝트) 목록 — 클릭해 선택
+  // 이 사무실에서 한 작업(프로젝트) 목록 — 클릭해 선택. 한글 설명(주석)이 있으면 함께 표시.
   const list = lastProjects.map((x) =>
     `<button type="button" class="artifact-proj-row${x.id === p.id ? ' on' : ''}" data-id="${escapeHtml(x.id)}">
-      <span class="artifact-name">📁 ${projLabel(x)} <span class="artifact-proj-id">${escapeHtml(x.id)}</span></span>
+      <span class="artifact-proj-main">
+        <span class="artifact-name">📁 ${escapeHtml(x.id)}</span>
+        <span class="artifact-desc">${x.description ? escapeHtml(x.description) + ' · ' : ''}${projLabel(x)}</span>
+      </span>
       <span class="artifact-size">${x.files?.length || 0}개</span>
     </button>`).join('');
 
@@ -120,16 +125,35 @@ export function renderArtifacts(projects) {
   const openBtn = entry
     ? `<a class="artifact-open" href="${fileUrl(entry)}" target="_blank" rel="noopener">🔍 결과물 열어보기</a>`
     : '';
+  const reviseBtn = `<button type="button" class="artifact-revise" id="btn-revise">✏️ 이 프로젝트 수정 의뢰</button>`;
   const rows = (p.files || []).map((f) =>
     `<a class="artifact-row" href="${fileUrl(f)}" target="_blank" rel="noopener">
       <span class="artifact-name">${escapeHtml(f.path)}</span>
       <span class="artifact-size">${fmtSize(f.size)}</span>
     </a>`).join('');
-  el.innerHTML = `<div class="artifact-projs">${list}</div>` + openBtn + rows;
+  el.innerHTML = `<div class="artifact-projs">${list}</div>` + openBtn + reviseBtn + rows;
 
   for (const btn of el.querySelectorAll('.artifact-proj-row')) {
     btn.onclick = () => { selectedProject = btn.dataset.id; renderArtifacts(lastProjects); };
   }
+  el.querySelector('#btn-revise').onclick = () => onReviseCb({ id: p.id, description: p.description || '' });
+}
+
+// ── 프로젝트명 선택 모달 ────────────────────────────────────────────────
+// onDecision(name|null, description) — null 이면 취소(시작하지 않음)
+export function showNaming({ candidates = [], description = '' }, onDecision) {
+  const overlay = document.getElementById('naming');
+  const optsEl = document.getElementById('naming-options');
+  optsEl.innerHTML = candidates.map((c, i) =>
+    `<label class="naming-opt"><input type="radio" name="naming" value="${escapeHtml(c)}"${i === 0 ? ' checked' : ''}/><span class="naming-name">${escapeHtml(c)}</span></label>`).join('');
+  document.getElementById('naming-desc').value = description;
+  overlay.hidden = false;
+  document.getElementById('btn-name-ok').onclick = () => {
+    const sel = optsEl.querySelector('input[name="naming"]:checked');
+    overlay.hidden = true;
+    onDecision(sel ? sel.value : candidates[0] || null, document.getElementById('naming-desc').value.trim());
+  };
+  document.getElementById('btn-name-cancel').onclick = () => { overlay.hidden = true; onDecision(null, ''); };
 }
 
 function fmtSize(n) {

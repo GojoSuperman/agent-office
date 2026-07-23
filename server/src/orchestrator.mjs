@@ -5,18 +5,40 @@
 // ============================================================================
 import { Events } from './protocol.mjs';
 import { PIPELINE } from './roles.mjs';
-import { planTasks, runRole, runQA } from './agents.mjs';
+import { planTasks, planRevision, runRole, runQA } from './agents.mjs';
+import { writeMeta, readMeta, snapshotProject } from './workspace.mjs';
 
-export async function runLive(topic, emit, signal, gate) {
+// 수정 의뢰용 경량 파이프라인 — 설계·디자인은 PM 계획(tasks)에 녹여 개발이 수행
+const REVISION_PIPELINE = [
+  { stage: '개발', owner: 'dev' },
+  { stage: 'QA', owner: 'qa' },
+  { stage: '문서', owner: 'writer' },
+];
+
+export async function runLive(topic, emit, signal, gate, opts = {}) {
   const alive = () => !signal?.aborted;
-  const projectId = 'p' + Date.now();
+  const isRevision = !!opts.revisionOf;
+  const projectId = opts.revisionOf || opts.name || 'p' + Date.now();
+
+  if (isRevision) {
+    // 원본 보존: 수정 시작 전 현재 산출물을 .rev/rev-N/ 으로 백업 + 메타에 수정 이력 기록
+    await snapshotProject(projectId);
+    const meta = (await readMeta(projectId)) || { name: projectId };
+    meta.revisions = [...(meta.revisions || []), { topic, at: new Date().toISOString() }];
+    await writeMeta(projectId, meta);
+  } else {
+    await writeMeta(projectId, {
+      name: projectId, description: opts.description || '', topic, createdAt: new Date().toISOString(),
+    });
+  }
 
   // ── 기획 + 결재 게이트: PM 플랜 → 최고 승인자(사용자) 승인 후에만 진행. 반려 시 피드백 반영 재작성 ──
-  emit(Events.meetingStart('킥오프 · ' + topic));
+  emit(Events.meetingStart((isRevision ? '수정 킥오프 · ' : '킥오프 · ') + topic));
   let names;
   let feedback = '';
   for (let revision = 1; ; revision++) {
-    const r = await planTasks({ topic, projectId, emit, feedback });
+    const plan = isRevision ? planRevision : planTasks;
+    const r = await plan({ topic, projectId, emit, feedback });
     names = r.names;
     if (!alive()) return;
     if (revision === 1) emit(Events.meetingEnd());
@@ -33,27 +55,28 @@ export async function runLive(topic, emit, signal, gate) {
   const tasks = names.map((name) => ({ id: seq++, name }));
   for (const t of tasks) emit(Events.taskCreate(t.id, t.name, '기획'));
 
+  const pipeline = isRevision ? REVISION_PIPELINE : PIPELINE;
   for (const t of tasks) {
     if (!alive()) return;
     let prev = 'pm';
-    for (const { stage, owner } of PIPELINE) {
+    for (const { stage, owner } of pipeline) {
       if (!alive()) return;
       emit(Events.taskHandoff(t.id, prev, owner));
       emit(Events.taskAdvance(t.id, stage, owner));
 
       if (owner === 'qa') {
-        const v = await runQA({ taskId: t.id, taskName: t.name, projectId, emit });
+        const v = await runQA({ taskId: t.id, taskName: t.name, projectId, emit, revision: isRevision });
         if (!v.pass) {
           // 반려 → 개발자에게 되돌려 1회 재작업 후 재검수
           emit(Events.taskRejected(t.id, 'qa', 'dev'));
           emit(Events.taskAdvance(t.id, '개발', 'dev'));
-          await runRole({ roleId: 'dev', taskId: t.id, taskName: t.name + ' (수정)', projectId, emit });
+          await runRole({ roleId: 'dev', taskId: t.id, taskName: t.name + ' (수정)', projectId, emit, revision: isRevision });
           emit(Events.taskHandoff(t.id, 'dev', 'qa'));
           emit(Events.taskAdvance(t.id, 'QA', 'qa'));
-          await runQA({ taskId: t.id, taskName: t.name, projectId, emit });
+          await runQA({ taskId: t.id, taskName: t.name, projectId, emit, revision: isRevision });
         }
       } else {
-        await runRole({ roleId: owner, taskId: t.id, taskName: t.name, projectId, emit });
+        await runRole({ roleId: owner, taskId: t.id, taskName: t.name, projectId, emit, revision: isRevision });
       }
       prev = owner;
     }

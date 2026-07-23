@@ -26,13 +26,26 @@ export class SSESource extends SourceBase {
   }
 
   // 사용자가 입력한 주제로 프로젝트 시작 요청
-  async startProject(topic) {
+  // opts: { name, description }(새 프로젝트 — 선택한 영문명) 또는 { revisionOf }(수정 의뢰)
+  async startProject(topic, opts = {}) {
     const r = await fetch(this.baseUrl + '/project', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ topic }),
+      body: JSON.stringify({ topic, ...opts }),
     });
     return r.json().catch(() => ({}));
+  }
+
+  // 의뢰 내용 분석 → 영문 프로젝트명 후보 3개 + 한글 설명 (시작 전 선택용)
+  async suggestNames(topic) {
+    try {
+      const r = await fetch(this.baseUrl + '/project/names', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ topic }),
+      });
+      return await r.json();
+    } catch { return { candidates: [], description: '' }; }
   }
 
   // 최고 승인자(사용자)의 결재 결과 전송 → 백엔드 파이프라인 재개

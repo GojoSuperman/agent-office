@@ -22,6 +22,10 @@
 - ✅ **라이브 실제 실행 검증 완료** (구구단 게임 1사이클: 결재→QA 반려·재작업→산출물 8개, 토큰 집계 정상)
 - ✅ GitHub 공개 (`agent-office`, MIT)
 - ✅ **원클릭 실행 스크립트**(`scripts/office-start.sh`) + 바탕화면 단축키 — **사용자 실환경 검증 완료(2026-07-23)**
+- ✅ 산출물 패널: 프로젝트 목록 선택·열람 + 유휴 시 명단 '대기' 표시 (2026-07-23)
+- ✅ **수정 의뢰**: 완성 프로젝트를 산출물 패널에서 골라 경량 사이클(PM→결재→개발→QA→문서)로 제자리 수정.
+      시작 전 `.rev/rev-N/` 자동 백업. + **영문 프로젝트명 제안**: 새 프로젝트 시작 시 후보 3개+한글 주석 선택
+      (`.office.json` 메타, live는 Haiku 단발 쿼리·실패 시 휴리스틱 폴백). 설계: `docs/superpowers/specs/2026-07-23-project-revision-and-naming-design.md`
 - ⏳ **남은 일**: 아래 "다음 작업" 참고
 
 ## 빠르게 실행
@@ -81,7 +85,9 @@ server/                   백엔드 (Node ESM)
   package.json            dep: @anthropic-ai/claude-agent-sdk
   .env.example            OFFICE_LIVE / 로그인 옵션 (복사 → .env, 커밋 금지)
   src/
-    index.mjs             HTTP+SSE 서버. GET /events · POST /project · POST /approval(결재) · GET /health. 인증 감지 + 안내
+    index.mjs             HTTP+SSE 서버. GET /events · POST /project(name/revisionOf 지원) · POST /project/names(이름 제안)
+                          · POST /approval(결재) · GET /health. 인증 감지 + 안내
+    naming.mjs            프로젝트명 제안 — 영문 후보 3개+한글 설명 (live: Haiku, 폴백: 휴리스틱)
     protocol.mjs          이벤트 팩토리 (web/src/protocol.js 와 동기화)
     roles.mjs             ★ 6역할 정의(모델·시스템 프롬프트·산출물 guide) + PIPELINE
     agents.mjs            Claude Agent SDK query()로 역할 실행 → 도구 호출/사용량을 이벤트로 번역

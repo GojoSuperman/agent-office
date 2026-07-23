@@ -3,7 +3,8 @@
 // 경로 탈출(../ 등)을 차단한다.
 // ============================================================================
 import { resolve, join, dirname, sep, relative } from 'node:path';
-import { mkdir, writeFile, readdir, stat } from 'node:fs/promises';
+import { mkdir, writeFile, readdir, stat, readFile, cp } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -33,9 +34,36 @@ export async function writeArtifact(projectId, rel, content) {
   return target;
 }
 
+// ── 프로젝트 메타(.office.json) — 영문 프로젝트명 + 한글 설명(주석) ──────
+// 숨김 파일이라 산출물 목록(listFiles)에는 노출되지 않는다.
+export async function writeMeta(projectId, meta) {
+  await mkdir(projectDir(projectId), { recursive: true });
+  await writeFile(join(projectDir(projectId), '.office.json'), JSON.stringify(meta, null, 2), 'utf8');
+}
+export async function readMeta(projectId) {
+  try { return JSON.parse(await readFile(join(projectDir(projectId), '.office.json'), 'utf8')); }
+  catch { return null; }
+}
+
+// ── 수정 의뢰 전 스냅샷 — 현재 산출물을 .rev/rev-N/ 에 백업(복원용) ──────
+export async function snapshotProject(projectId) {
+  const base = projectDir(projectId);
+  if (!existsSync(base)) return null;
+  let n = 1;
+  while (existsSync(join(base, '.rev', 'rev-' + n))) n++;
+  const dest = join(base, '.rev', 'rev-' + n);
+  await mkdir(dest, { recursive: true });
+  // 항목별 복사(.rev 자신 제외 — cp는 자기 하위 폴더로의 복사를 거부하므로 통째로 못 쓴다)
+  for (const name of await readdir(base)) {
+    if (name === '.rev') continue;
+    await cp(join(base, name), join(dest, name), { recursive: true });
+  }
+  return 'rev-' + n;
+}
+
 // ── 산출물 열람 (읽기 전용 API 용) ──────────────────────────────────────
 
-// 프로젝트 목록 (최신순)
+// 프로젝트 목록 (최신순) — .office.json 이 있으면 한글 설명(description) 포함
 export async function listProjects() {
   let names = [];
   try { names = await readdir(ROOT); } catch { return []; }
@@ -44,7 +72,9 @@ export async function listProjects() {
     if (name.startsWith('.')) continue;
     try {
       const s = await stat(join(ROOT, name));
-      if (s.isDirectory()) out.push({ id: name, mtime: s.mtimeMs });
+      if (!s.isDirectory()) continue;
+      const meta = await readMeta(name);
+      out.push({ id: name, mtime: s.mtimeMs, description: meta?.description || '', topic: meta?.topic || '' });
     } catch {}
   }
   return out.sort((a, b) => b.mtime - a.mtime);

@@ -6,11 +6,12 @@
 // (cwd)에 작업하고, 그 "도구 호출"을 우리 의미 이벤트로 번역한다.
 // ============================================================================
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import { readFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir, rm } from 'node:fs/promises';
 import { join, basename } from 'node:path';
 import { Events } from './protocol.mjs';
 import { ROLES } from './roles.mjs';
 import { projectDir } from './workspace.mjs';
+import { reportLimit, clearLimit } from './limits.mjs';
 
 // 역할별 모델. OFFICE_MODEL 이 설정되면 전원 그 값으로 오버라이드(테스트용).
 const modelFor = (roleId) => process.env.OFFICE_MODEL || ROLES[roleId]?.model || 'claude-opus-4-8';
@@ -80,13 +81,28 @@ async function runQuery({ roleId, prompt, cwd, emit, taskId = null, allowedTools
         emit(Events.usage(roleId, modelFor(roleId), input, output, cost));
       }
     }
+    clearLimit(); // 정상 실행 = 한도 아님 → 표시 해제
+    return { ok: true, error: '' };
   } catch (err) {
     // 역할 하나의 실패(턴 한도 초과·일시 오류 등)가 프로젝트 전체를 죽이지 않게 흡수.
     // 실패 시점까지 저장된 파일은 남아 있으므로 다음 단계가 이어받는다.
+    reportLimit(err?.message); // 구독 한도 메시지면 /health 에 리셋 시각 노출
     const msg = (err?.message || String(err)).slice(0, 90);
     emit(Events.thinking(roleId, `⚠️ 중단(${msg}) — 다음 단계로 진행`));
+    return { ok: false, error: msg };
   }
 }
+
+// PM 실행 전 이전 플랜 파일 제거 — 실패 시 옛 plan.md/tasks.json 을 새 플랜처럼
+// 재탕해 결재에 올리는 사고 방지(수정 의뢰에서는 원본이 .rev/ 백업에 남아 있다).
+async function clearPlanFiles(cwd) {
+  await rm(join(cwd, 'plan.md'), { force: true });
+  await rm(join(cwd, 'tasks.json'), { force: true });
+}
+
+// PM 실패 시 결재 문서에 붙일 경고 머리말
+const planFailNote = (q) => q.ok ? '' :
+  `> ⚠️ PM 에이전트 실행 실패(${q.error})\n> 아래는 자동 생성된 임시 플랜입니다 — 반려 후 잠시 뒤 다시 시도하세요.\n\n`;
 
 // PM 이 실행 플랜(plan.md, 결재용)과 작업 분해(tasks.json)를 작성 → 백엔드가 읽어들임.
 // feedback 이 있으면(반려) 이를 반영해 재작성한다.
@@ -96,7 +112,8 @@ export async function planTasks({ topic, projectId, emit, feedback = '' }) {
   const fb = feedback
     ? ` 직전 플랜이 최고 승인자에게 반려되었습니다. 반려 피드백: "${feedback}". 이를 반드시 반영해 두 파일을 다시 작성해줘.`
     : '';
-  await runQuery({
+  await clearPlanFiles(cwd);
+  const q = await runQuery({
     roleId: 'pm', cwd, emit, allowedTools: ['Write'],
     prompt: `다음 프로젝트의 실행 플랜을 세워줘. 파일 두 개를 저장해: ` +
       `(1) plan.md — 최고 승인자가 읽고 결재할 간결한 마크다운 플랜(목표 · 작업 목록 · 진행 방향 · 예상 산출물), ` +
@@ -111,26 +128,57 @@ export async function planTasks({ topic, projectId, emit, feedback = '' }) {
     if (Array.isArray(arr) && arr.length) names = arr.map(String).slice(0, 3);
   } catch { /* 파싱 실패 시 폴백 */ }
   if (!names) names = [`${topic} · 핵심 기능`, `${topic} · 화면 UI`];
-  if (!plan) plan = `# ${topic} 실행 플랜\n\n## 작업 목록\n` + names.map((n, i) => `${i + 1}. ${n}`).join('\n');
+  if (!plan) plan = planFailNote(q) + `# ${topic} 실행 플랜\n\n## 작업 목록\n` + names.map((n, i) => `${i + 1}. ${n}`).join('\n');
   return { names, plan };
 }
 
-// 개발/디자인 역할이 작업을 수행하고 산출물을 샌드박스에 저장
-export async function runRole({ roleId, taskId, taskName, projectId, emit }) {
+// 수정 의뢰: PM이 기존 산출물을 읽고 수정 계획(plan.md)+작업 분해(tasks.json)를 작성
+export async function planRevision({ topic, projectId, emit, feedback = '' }) {
+  const cwd = projectDir(projectId);
+  const fb = feedback
+    ? ` 직전 수정 계획이 최고 승인자에게 반려되었습니다. 반려 피드백: "${feedback}". 이를 반드시 반영해 두 파일을 다시 작성해줘.`
+    : '';
+  await clearPlanFiles(cwd);
+  const q = await runQuery({
+    roleId: 'pm', cwd, emit, allowedTools: ['Read', 'Write'],
+    prompt: `이 폴더는 완성된 프로젝트의 산출물입니다. 다음 수정 의뢰가 들어왔어: "${topic}". ` +
+      `기존 파일들을 Read로 파악한 뒤 파일 두 개를 저장해: ` +
+      `(1) plan.md — 최고 승인자가 결재할 간결한 수정 계획(수정 목표 · 바꿀 파일 · 작업 목록), ` +
+      `(2) tasks.json — 1~3개의 구체적 수정 작업 이름 JSON 문자열 배열.${fb}`,
+  });
+  let names = null;
+  let plan = '';
+  try { plan = await readFile(join(cwd, 'plan.md'), 'utf8'); } catch { /* 폴백 아래 */ }
+  try {
+    const arr = JSON.parse(await readFile(join(cwd, 'tasks.json'), 'utf8'));
+    if (Array.isArray(arr) && arr.length) names = arr.map(String).slice(0, 3);
+  } catch { /* 파싱 실패 시 폴백 */ }
+  if (!names) names = [`수정: ${topic}`.slice(0, 40)];
+  if (!plan) plan = planFailNote(q) + `# 수정 계획\n\n요청: ${topic}\n\n## 작업 목록\n` + names.map((n, i) => `${i + 1}. ${n}`).join('\n');
+  return { names, plan };
+}
+
+// 개발/디자인 역할이 작업을 수행하고 산출물을 샌드박스에 저장.
+// revision: 기존 산출물을 고치는 수정 작업 — 최소 변경 원칙을 프롬프트로 지시.
+export async function runRole({ roleId, taskId, taskName, projectId, emit, revision = false }) {
   const guide = ROLES[roleId]?.guide || '결과물을 이 폴더에 파일로 작성해줘.';
+  const ctx = revision
+    ? '기존 산출물을 수정하는 작업입니다. 관련 파일을 Read로 확인하고 요청 범위만 최소 변경으로 고쳐줘. '
+    : '';
   await runQuery({
     roleId, taskId, cwd: projectDir(projectId), emit,
-    prompt: `작업: "${taskName}". ${guide} Write/Edit 도구로 이 폴더에 저장하고, 설명은 짧게.`,
+    prompt: `작업: "${taskName}". ${ctx}${guide} Write/Edit 도구로 이 폴더에 저장하고, 설명은 짧게.`,
   });
 }
 
 // QA: 산출물을 읽어 판정을 qa-<taskId>.txt 에 기록(첫 줄 PASS/REJECT) → 백엔드가 읽음
-export async function runQA({ taskId, taskName, projectId, emit }) {
+export async function runQA({ taskId, taskName, projectId, emit, revision = false }) {
   const cwd = projectDir(projectId);
   const verdictFile = `qa-${taskId}.txt`;
+  const focus = revision ? `수정 작업 "${taskName}"이 의도대로 반영됐고 기존 기능이 깨지지 않았는지 중심으로 ` : '';
   await runQuery({
     roleId: 'qa', cwd, emit,
-    prompt: `이 폴더의 산출물을 검토하고 판정을 ${verdictFile} 파일에 저장해줘. 첫 줄은 반드시 PASS 또는 REJECT, 둘째 줄에 사유(짧게). 대부분 PASS, 명확한 결함만 REJECT.`,
+    prompt: `이 폴더의 산출물을 ${focus}검토하고 판정을 ${verdictFile} 파일에 저장해줘. 첫 줄은 반드시 PASS 또는 REJECT, 둘째 줄에 사유(짧게). 대부분 PASS, 명확한 결함만 REJECT.`,
   });
   try {
     const raw = await readFile(join(cwd, verdictFile), 'utf8');

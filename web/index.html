@@ -16,9 +16,23 @@
     <button id="btn-pause">⏸ 일시정지</button>
   </header>
   <div id="topicbar" hidden>
+    <span id="revbadge" class="revbadge" hidden>✏️ 수정: <b id="revbadge-name"></b><button id="btn-rev-cancel" title="수정 모드 취소">✕</button></span>
     <input id="topic" type="text" placeholder="프로젝트 주제 입력 (예: 할 일 관리 앱)" />
     <button id="btn-start">▶ 프로젝트 시작</button>
     <span id="mode" class="sub"></span>
+  </div>
+  <div id="naming" class="approval-overlay" hidden>
+    <div class="approval-card">
+      <h2>🏷️ 프로젝트명 선택</h2>
+      <p class="approval-hint">의뢰 내용을 분석해 제안한 영문 프로젝트명입니다. 하나를 골라주세요. (산출물 폴더명이 됩니다)</p>
+      <div id="naming-options" class="naming-options"></div>
+      <label class="naming-label" for="naming-desc">어떤 작업인지 (한글 주석 — 산출물 목록에 표시)</label>
+      <input id="naming-desc" type="text" maxlength="120" />
+      <div class="approval-actions">
+        <button id="btn-name-cancel" class="reject">취소</button>
+        <button id="btn-name-ok" class="approve">▶ 이 이름으로 시작</button>
+      </div>
+    </div>
   </div>
   <div id="approval" class="approval-overlay" hidden>
     <div class="approval-card">

@@ -12,7 +12,9 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { createReadStream } from 'node:fs';
 import { runMock } from './mock.mjs';
-import { listProjects, listFiles, safeReadTarget } from './workspace.mjs';
+import { listProjects, listFiles, safeReadTarget, projectDir } from './workspace.mjs';
+import { suggestNames, sanitizeName } from './naming.mjs';
+import { limitNotice } from './limits.mjs';
 
 const PORT = process.env.PORT || 8787;
 
@@ -81,7 +83,7 @@ function trackState(ev) {
   }
 }
 
-async function startProject(topic) {
+async function startProject(topic, opts = {}) {
   if (current) current.controller.abort();
   const controller = new AbortController();
   const me = { controller, resolveApproval: null };
@@ -97,9 +99,9 @@ async function startProject(topic) {
   try {
     if (MODE === 'live') {
       const { runLive } = await import('./orchestrator.mjs');
-      await runLive(topic, emit, controller.signal, gate);
+      await runLive(topic, emit, controller.signal, gate, opts);
     } else {
-      await runMock(topic, emit, controller.signal, gate);
+      await runMock(topic, emit, controller.signal, gate, opts);
     }
   } catch (err) {
     console.error('오케스트레이터 오류:', err);
@@ -123,7 +125,7 @@ const server = createServer((req, res) => {
 
   if (url.pathname === '/health') {
     res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ ok: true, mode: MODE, auth: authStatus().source, account: accountInfo(), clients: clients.size, pendingApproval: !!current?.resolveApproval }));
+    res.end(JSON.stringify({ ok: true, mode: MODE, auth: authStatus().source, account: accountInfo(), clients: clients.size, pendingApproval: !!current?.resolveApproval, limit: limitNotice() }));
     return;
   }
 
@@ -147,16 +149,48 @@ const server = createServer((req, res) => {
     return;
   }
 
+  // 프로젝트명 제안 — 의뢰 내용 분석 → 영문 후보 3개 + 한글 설명 (시작 전 사용자 선택용)
+  if (url.pathname === '/project/names' && req.method === 'POST') {
+    let body = '';
+    req.on('data', (c) => { body += c; if (body.length > 1e5) req.destroy(); });
+    req.on('end', async () => {
+      let topic = '';
+      try { topic = (JSON.parse(body || '{}').topic || '').toString().slice(0, 500); } catch {}
+      if (!topic) { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{"error":"topic 필요"}'); return; }
+      const r = await suggestNames(topic, MODE === 'live');
+      res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(r));
+    });
+    return;
+  }
+
   if (url.pathname === '/project' && req.method === 'POST') {
     let body = '';
     req.on('data', (c) => { body += c; if (body.length > 1e5) req.destroy(); });
     req.on('end', () => {
-      let topic = '';
-      try { topic = (JSON.parse(body || '{}').topic || '').toString().slice(0, 500); } catch {}
+      let topic = '', name = null, description = '', revisionOf = null;
+      try {
+        const p = JSON.parse(body || '{}');
+        topic = (p.topic || '').toString().slice(0, 500);
+        name = sanitizeName(p.name);
+        description = (p.description || '').toString().slice(0, 120);
+        revisionOf = (p.revisionOf || '').toString() || null;
+      } catch {}
       if (!topic) { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{"error":"topic 필요"}'); return; }
-      startProject(topic); // 비동기 시작(응답은 즉시)
+      if (revisionOf) {
+        // 수정 의뢰: 대상 프로젝트 폴더가 실제로 있어야 한다 (경로 문자는 sanitize 없이 존재 검증만)
+        if (revisionOf.startsWith('.') || revisionOf.includes('/') || revisionOf.includes('\\') || !existsSync(projectDir(revisionOf))) {
+          res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' });
+          res.end('{"error":"수정 대상 프로젝트가 없습니다"}'); return;
+        }
+        startProject(topic, { revisionOf });
+      } else {
+        // 새 프로젝트: 선택된 영문명 사용, 폴더 충돌 시 -2, -3… 부여
+        if (name) { let n = name, i = 2; while (existsSync(projectDir(n))) n = `${name}-${i++}`; name = n; }
+        startProject(topic, { name, description });
+      }
       res.writeHead(202, { 'content-type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ started: true, mode: MODE, topic }));
+      res.end(JSON.stringify({ started: true, mode: MODE, topic, name, revisionOf }));
     });
     return;
   }
