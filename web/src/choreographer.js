@@ -4,10 +4,9 @@
 // 이 계층만이 타일 좌표·이동·말풍선을 안다. 소스(백엔드)는 이걸 몰라도 된다.
 // 또한 이벤트가 없을 때의 앰비언트 행동(자리 복귀·잡담·커피)도 여기서 만든다.
 // ============================================================================
-import { DESKS, MEETING, STAGES, STAGE_OWNER, WORK_LINES, TALK_LINES, TOOL_LABELS, CEO_ROOM,
+import { DESKS, MEETING, STAGE_OWNER, WORK_LINES, TALK_LINES, TOOL_LABELS, CEO_ROOM,
   BOSS_LINES, BOSS_REACTIONS, BOSS_APPROVAL_LINES, BOSS_GRANT_LINES, BOSS_REJECT_LINES, BREAK_LINES, pick } from './config.js';
 
-const DONE_STAGE = STAGES.indexOf('완료'); // 이 단계 미만 작업이 있으면 프로젝트 진행 중
 import { neighborTile } from './pathfinding.js';
 import { clock } from './clock.js';
 import { audio } from './audio.js';
@@ -18,7 +17,6 @@ export class Choreographer {
     this.onTaskChange = onTaskChange || (() => {}); // 보드 갱신 콜백
     this.onApproval = onApproval || (() => {});     // 결재 요청 → UI 패널 표시 콜백
     this.quiet = quiet; // true(라이브): 앰비언트 가짜 대사 끔 — 실제 작업 이벤트 말풍선만 표시
-    this.approvalPending = false; // 결재 대기 중이면 대표는 방에서 담당자 보고를 받는다
     this.breakers = new Set();    // 커피 브레이크 중인 직원 id
     this.breakUntil = 0;          // 현재 브레이크 종료 시각
     this.nextBreak = 0;           // 다음 브레이크 검토 시각
@@ -92,13 +90,13 @@ export class Choreographer {
       }
       case 'approval.request': {
         // PM이 대표에게 플랜 결재 상신 → PM이 대표실로 보고하러 입장. 패널 표시는 main의 콜백.
-        this.approvalPending = true;
+        this.world.approvalPending = true;
         this._sendPmToReport();
         this.onApproval(ev);
         break;
       }
       case 'approval.granted': {
-        this.approvalPending = false;
+        this.world.approvalPending = false;
         audio.event('grant');
         const pm = w.byId.pm, ceo = w.ceo;
         if (ceo) ceo.say(pick(BOSS_GRANT_LINES), 3);
@@ -107,7 +105,7 @@ export class Choreographer {
         break;
       }
       case 'approval.rejected': {
-        this.approvalPending = false;
+        this.world.approvalPending = false;
         audio.event('reject');
         const pm = w.byId.pm, ceo = w.ceo;
         if (ceo) ceo.say(pick(BOSS_REJECT_LINES), 3);
@@ -139,7 +137,7 @@ export class Choreographer {
     for (const a of w.agents) {
       if (a.path.length) continue;
       if (this.breakers.has(a.id)) continue;               // 커피 브레이크 중인 직원은 별도 관리
-      if (this.approvalPending && a.id === 'pm') continue; // 결재 보고 중인 PM 은 방에서 대기
+      if (this.world.approvalPending && a.id === 'pm') continue; // 결재 보고 중인 PM 은 방에서 대기
       if (a.status === 'blocked' || a.status === 'meeting') continue;
       if (clock.t < a.nextThink) continue;
       a.nextThink = clock.t + 3 + Math.random() * 4;
@@ -186,22 +184,16 @@ export class Choreographer {
       }
       return;
     }
-    // 새 브레이크 시작: 프로젝트가 완전히 유휴일 때만
-    if (this._projectBusy()) return;                                      // 진행 중이면 커피 타임 없음
+    // 새 브레이크 시작: 프로젝트가 완전히 유휴일 때만 (진행 여부 판정은 World.projectBusy)
+    if (this.world.projectBusy) return;                                   // 진행 중이면 커피 타임 없음
     if (clock.t < this.nextBreak || clock.t - this.lastEventAt < 6) return;
     this.nextBreak = clock.t + 22 + Math.random() * 26;
     this._startCoffeeBreak();
   }
 
-  // 완료되지 않은 작업이 하나라도 있으면 프로젝트 진행 중 + 결재 대기도 진행으로 간주
-  _projectBusy() {
-    if (this.approvalPending) return true;
-    return this.world.tasks.some(t => t.stage < DONE_STAGE);
-  }
-
   _startCoffeeBreak() {
     const w = this.world;
-    if (this.approvalPending) return;
+    if (this.world.approvalPending) return;
     const avail = w.agents.filter(a => !a.path.length && a.atSeat && a.status !== 'blocked' && a.status !== 'meeting');
     if (avail.length < 2) return;
     const n = Math.min(avail.length, Math.random() < 0.5 ? 3 : 2); // 2~3명
@@ -225,10 +217,10 @@ export class Choreographer {
     const atHome = Math.round(ceo.pos[0]) === home[0] && Math.round(ceo.pos[1]) === home[1];
 
     // 회의 중이거나 결재 대기 중이면 방을 지킨다(결재 땐 가끔 담당자에게 한마디)
-    if (this.world.meetingActive || this.approvalPending) {
+    if (this.world.meetingActive || this.world.approvalPending) {
       if (!atHome) { this._ceoHome(); return; }
       ceo.status = 'idle';
-      if (this.approvalPending && clock.t >= ceo.nextThink) {
+      if (this.world.approvalPending && clock.t >= ceo.nextThink) {
         ceo.nextThink = clock.t + 5 + Math.random() * 5;
         if (Math.random() < 0.6) ceo.say(pick(BOSS_APPROVAL_LINES), 3);
       }

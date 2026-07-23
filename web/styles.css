@@ -92,7 +92,15 @@ aside h2 {
 
 /* ── 산출물 패널 ── */
 .artifacts { display: flex; flex-direction: column; gap: 5px; }
-.artifact-proj { font-size: 11px; color: var(--muted); }
+.artifact-projs { display: flex; flex-direction: column; gap: 4px; max-height: 150px; overflow-y: auto; margin-bottom: 2px; }
+.artifact-proj-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px;
+  padding: 5px 9px; color: var(--text); cursor: pointer; font: inherit; text-align: left;
+}
+.artifact-proj-row:hover { border-color: var(--accent); }
+.artifact-proj-row.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); }
+.artifact-proj-id { font-size: 10px; color: var(--muted); margin-left: 4px; }
 .artifact-open {
   display: block; text-align: center; background: var(--accent); color: #fff;
   border-radius: 8px; padding: 8px 10px; font-size: 13px; font-weight: 700; text-decoration: none;

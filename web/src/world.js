@@ -21,7 +21,15 @@ export class World {
     this.ceo.status = 'idle';
     this.tasks = [];          // { id, name, stage }
     this.meetingActive = false;
+    this.approvalPending = false; // 결재(승인 게이트) 대기 중 — Choreographer 가 갱신
     this.usage = new Map();   // model → { input, output, cost, calls }
+  }
+
+  // 완료되지 않은 작업이 하나라도 있으면 프로젝트 진행 중. 결재 대기도 진행으로 간주.
+  get projectBusy() {
+    if (this.approvalPending) return true;
+    const done = STAGES.indexOf('완료');
+    return this.tasks.some(t => t.stage < done);
   }
 
   // 모델별 토큰/비용 누적 (agent.usage 이벤트로 갱신)

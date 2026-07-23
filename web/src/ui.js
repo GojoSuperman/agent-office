@@ -47,8 +47,10 @@ function renderProgress() {
 }
 
 export function renderRoster() {
+  // 유휴(프로젝트 미진행) 시 캔버스의 앰비언트 연기(작업중 등)는 명단에 노출하지 않고 전원 '대기'로 표시
+  const busy = world.projectBusy;
   rosterEl.innerHTML = world.agents.map((a) => {
-    const st = STATUS[a.status];
+    const st = STATUS[busy ? a.status : 'idle'];
     return `<div class="agent-row"><span class="dot" style="background:${a.color}"></span>` +
       `<div class="agent-info"><div class="name">${escapeHtml(a.name)}</div><div class="role">${escapeHtml(a.role)}</div></div>` +
       `<div class="agent-status" style="color:${st.color}">${st.icon} ${st.label}</div></div>`;
@@ -85,25 +87,49 @@ export function initArtifacts(baseUrl) {
   document.getElementById('artifacts-sec').hidden = false;
 }
 
+let lastProjects = [];   // 마지막 수신 목록 (선택 클릭 시 재렌더용)
+let selectedProject = ''; // 사용자가 고른 프로젝트 id ('' = 최신)
+
+// 프로젝트 표시명: id의 타임스탬프(p<ms>) 우선, 없으면 mtime → "7/23 12:28"
+function projLabel(p) {
+  const ms = Number(String(p.id).replace(/^p/, ''));
+  const d = new Date(Number.isFinite(ms) && ms > 1e12 ? ms : p.mtime);
+  return isNaN(d) ? p.id : `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
 export function renderArtifacts(projects) {
   const el = document.getElementById('artifacts');
   if (!el) return;
-  const p = projects?.[0]; // 최신 프로젝트
-  if (!p || !p.files?.length) {
+  lastProjects = projects || [];
+  if (!lastProjects.length) {
     el.innerHTML = `<div class="usage-empty">아직 산출물 없음 — 에이전트가 파일을 만들면 여기 표시됩니다.</div>`;
     return;
   }
+  // 선택된 프로젝트(없어졌으면 최신으로 폴백)
+  const p = lastProjects.find((x) => x.id === selectedProject) || lastProjects[0];
+
+  // 이 사무실에서 한 작업(프로젝트) 목록 — 클릭해 선택
+  const list = lastProjects.map((x) =>
+    `<button type="button" class="artifact-proj-row${x.id === p.id ? ' on' : ''}" data-id="${escapeHtml(x.id)}">
+      <span class="artifact-name">📁 ${projLabel(x)} <span class="artifact-proj-id">${escapeHtml(x.id)}</span></span>
+      <span class="artifact-size">${x.files?.length || 0}개</span>
+    </button>`).join('');
+
   const fileUrl = (f) => `${artifactsBase}/artifacts/${encodeURIComponent(p.id)}/${f.path.split('/').map(encodeURIComponent).join('/')}`;
-  const entry = p.files.find((f) => f.path === 'index.html');
+  const entry = (p.files || []).find((f) => f.path === 'index.html');
   const openBtn = entry
     ? `<a class="artifact-open" href="${fileUrl(entry)}" target="_blank" rel="noopener">🔍 결과물 열어보기</a>`
     : '';
-  const rows = p.files.map((f) =>
+  const rows = (p.files || []).map((f) =>
     `<a class="artifact-row" href="${fileUrl(f)}" target="_blank" rel="noopener">
       <span class="artifact-name">${escapeHtml(f.path)}</span>
       <span class="artifact-size">${fmtSize(f.size)}</span>
     </a>`).join('');
-  el.innerHTML = `<div class="artifact-proj">${escapeHtml(p.id)} · ${p.files.length}개 파일</div>` + openBtn + rows;
+  el.innerHTML = `<div class="artifact-projs">${list}</div>` + openBtn + rows;
+
+  for (const btn of el.querySelectorAll('.artifact-proj-row')) {
+    btn.onclick = () => { selectedProject = btn.dataset.id; renderArtifacts(lastProjects); };
+  }
 }
 
 function fmtSize(n) {

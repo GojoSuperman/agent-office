@@ -186,11 +186,11 @@ const server = createServer((req, res) => {
   }
 
   // ── 산출물 열람 (읽기 전용) ──
-  //   GET /artifacts                          : 프로젝트 목록 + 각 파일 목록 (최신 3개)
+  //   GET /artifacts                          : 프로젝트 목록 + 각 파일 목록 (최신 20개)
   //   GET /artifacts/<projectId>/<파일경로>    : 파일 제공 (HTML 산출물은 브라우저에서 바로 동작)
   if (url.pathname === '/artifacts' && req.method === 'GET') {
     (async () => {
-      const projects = (await listProjects()).slice(0, 3);
+      const projects = (await listProjects()).slice(0, 20);
       for (const p of projects) p.files = await listFiles(p.id);
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ projects }));
